@@ -3,6 +3,10 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# Input file types
+.xlsx
+.png
+
 # C extensions
 *.so
 

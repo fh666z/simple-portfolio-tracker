@@ -4,8 +4,8 @@ __pycache__/
 *$py.class
 
 # Input file types
-.xlsx
-.png
+*.xlsx
+*.png
 
 # C extensions
 *.so

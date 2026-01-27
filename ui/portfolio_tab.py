@@ -37,6 +37,7 @@ class PortfolioTab(QWidget):
         super().__init__(parent)
         self.calculator = calculator
         self.settings_store = settings_store
+        self._updating_free_cash = False  # Guard against double-processing
         self.setup_ui()
     
     def setup_ui(self):
@@ -67,6 +68,7 @@ class PortfolioTab(QWidget):
         self.free_cash_input.setValidator(QDoubleValidator(0, 999999999, 2))
         self.free_cash_input.setMaximumWidth(120)
         self.free_cash_input.editingFinished.connect(self.on_free_cash_changed)
+        self.free_cash_input.returnPressed.connect(self.on_free_cash_changed)
         summary_layout.addWidget(self.free_cash_input)
         
         summary_layout.addSpacing(30)
@@ -272,13 +274,19 @@ class PortfolioTab(QWidget):
     
     def on_free_cash_changed(self):
         """Handle free cash input change."""
+        if self._updating_free_cash:
+            return
+        
         try:
+            self._updating_free_cash = True
             value = float(self.free_cash_input.text() or 0)
             self.calculator.set_free_cash(value)
             self.refresh()
             self.portfolio_changed.emit()
         except ValueError:
             pass
+        finally:
+            self._updating_free_cash = False
     
     def on_currency_changed(self, row: int, currency: str):
         """Handle currency change for a holding."""

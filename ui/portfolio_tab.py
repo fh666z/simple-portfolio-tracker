@@ -124,9 +124,8 @@ class PortfolioTab(QWidget):
         for row, holding in enumerate(portfolio.holdings):
             alloc = alloc_map.get(holding.instrument)
             
-            # Instrument (read-only)
+            # Instrument (editable)
             item = QTableWidgetItem(holding.instrument)
-            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.table.setItem(row, self.COL_INSTRUMENT, item)
             
             # Currency (editable combo)
@@ -142,15 +141,13 @@ class PortfolioTab(QWidget):
             )
             self.table.setCellWidget(row, self.COL_CURRENCY, currency_combo)
             
-            # Position (read-only)
-            item = QTableWidgetItem(f"{holding.position:,.2f}")
-            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            # Position (editable)
+            item = QTableWidgetItem(f"{holding.position:.2f}")
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.table.setItem(row, self.COL_POSITION, item)
             
-            # Last Price (read-only) - in instrument currency
-            item = QTableWidgetItem(f"{holding.last_price:,.2f}")
-            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            # Last Price (editable) - in instrument currency
+            item = QTableWidgetItem(f"{holding.last_price:.2f}")
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.table.setItem(row, self.COL_LAST_PRICE, item)
             
@@ -168,9 +165,8 @@ class PortfolioTab(QWidget):
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.table.setItem(row, self.COL_MARKET_VALUE_EUR, item)
             
-            # Cost Basis (read-only)
-            item = QTableWidgetItem(f"{currency_symbol}{holding.cost_basis:,.2f}")
-            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            # Cost Basis (editable)
+            item = QTableWidgetItem(f"{holding.cost_basis:.2f}")
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.table.setItem(row, self.COL_COST_BASIS, item)
             
@@ -219,10 +215,8 @@ class PortfolioTab(QWidget):
                 item.setForeground(Qt.GlobalColor.darkRed)
             self.table.setItem(row, self.COL_DIFF_TARGET, item)
             
-            # Daily P&L (read-only)
-            pnl_text = f"€{holding.daily_pnl:+,.2f}"
-            item = QTableWidgetItem(pnl_text)
-            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            # Daily P&L (editable)
+            item = QTableWidgetItem(f"{holding.daily_pnl:.2f}")
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             if holding.daily_pnl > 0:
                 item.setForeground(Qt.GlobalColor.darkGreen)
@@ -230,10 +224,8 @@ class PortfolioTab(QWidget):
                 item.setForeground(Qt.GlobalColor.darkRed)
             self.table.setItem(row, self.COL_DAILY_PNL, item)
             
-            # Unrealized P&L (read-only)
-            upnl_text = f"€{holding.unrealized_pnl:+,.2f}"
-            item = QTableWidgetItem(upnl_text)
-            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            # Unrealized P&L (editable)
+            item = QTableWidgetItem(f"{holding.unrealized_pnl:.2f}")
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             if holding.unrealized_pnl > 0:
                 item.setForeground(Qt.GlobalColor.darkGreen)
@@ -313,13 +305,67 @@ class PortfolioTab(QWidget):
     
     def on_cell_changed(self, row: int, col: int):
         """Handle cell value change."""
-        if col == self.COL_TARGET:  # Target % column
-            item = self.table.item(row, col)
-            if item and row < len(self.calculator.portfolio.holdings):
-                try:
-                    value = float(item.text()) / 100  # Convert from percentage
-                    self.calculator.portfolio.holdings[row].target_allocation = value
-                    self.refresh()
+        if row >= len(self.calculator.portfolio.holdings):
+            return
+        
+        item = self.table.item(row, col)
+        if not item:
+            return
+        
+        holding = self.calculator.portfolio.holdings[row]
+        text = item.text().strip()
+        
+        try:
+            if col == self.COL_INSTRUMENT:
+                # Update instrument name
+                if text:
+                    holding.instrument = text
                     self.portfolio_changed.emit()
-                except ValueError:
-                    pass
+            
+            elif col == self.COL_POSITION:
+                # Update position and recalculate market value
+                value = float(text.replace(',', ''))
+                holding.position = value
+                holding.market_value = holding.position * holding.last_price
+                self.refresh()
+                self.portfolio_changed.emit()
+            
+            elif col == self.COL_LAST_PRICE:
+                # Update last price and recalculate market value
+                value = float(text.replace(',', ''))
+                holding.last_price = value
+                holding.market_value = holding.position * holding.last_price
+                self.refresh()
+                self.portfolio_changed.emit()
+            
+            elif col == self.COL_COST_BASIS:
+                # Update cost basis
+                value = float(text.replace(',', ''))
+                holding.cost_basis = value
+                self.refresh()
+                self.portfolio_changed.emit()
+            
+            elif col == self.COL_TARGET:
+                # Update target allocation (percentage)
+                value = float(text.replace(',', '')) / 100
+                holding.target_allocation = value
+                self.refresh()
+                self.portfolio_changed.emit()
+            
+            elif col == self.COL_DAILY_PNL:
+                # Update daily P&L
+                value = float(text.replace(',', ''))
+                holding.daily_pnl = value
+                self.refresh()
+                self.portfolio_changed.emit()
+            
+            elif col == self.COL_UNREALIZED_PNL:
+                # Update unrealized P&L
+                value = float(text.replace(',', ''))
+                holding.unrealized_pnl = value
+                self.refresh()
+                self.portfolio_changed.emit()
+        
+        except ValueError:
+            # Invalid input, refresh to show original value
+            self.refresh()

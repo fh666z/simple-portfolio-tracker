@@ -75,6 +75,23 @@ class MainWindow(QMainWindow):
         new_input_btn.clicked.connect(self.on_new_input)
         toolbar_layout.addWidget(new_input_btn)
         
+        reset_btn = QPushButton("Reset Data")
+        reset_btn.setStyleSheet("""
+            QPushButton {
+                padding: 10px 20px;
+                font-size: 14px;
+                background-color: #dc3545;
+                color: white;
+                border: none;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #c82333;
+            }
+        """)
+        reset_btn.clicked.connect(self.on_reset_data)
+        toolbar_layout.addWidget(reset_btn)
+        
         toolbar_layout.addStretch()
         
         layout.addLayout(toolbar_layout)
@@ -163,6 +180,30 @@ class MainWindow(QMainWindow):
         dialog = ImportDialog(self)
         dialog.file_selected.connect(self.process_import_file)
         dialog.exec()
+    
+    def on_reset_data(self):
+        """Handle reset data button click."""
+        reply = QMessageBox.warning(
+            self,
+            "Reset Portfolio Data",
+            "This will erase all portfolio data including holdings and free cash.\n\n"
+            "This action cannot be undone.\n\n"
+            "Are you sure you want to continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            # Clear all holdings
+            self.calculator.portfolio.holdings.clear()
+            # Reset free cash
+            self.calculator.set_free_cash(0)
+            # Refresh all views
+            self.refresh_all()
+            # Save the empty state
+            self.save_all()
+            # Show confirmation
+            self.status_bar.showMessage("Portfolio data has been reset.", 5000)
     
     def process_import_file(self, file_path: str):
         """Process an imported file."""

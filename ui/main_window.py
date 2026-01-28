@@ -1,8 +1,10 @@
 """Main window for Portfolio Tracker."""
+import json
+from datetime import datetime
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QTabWidget, QPushButton,
-    QHBoxLayout, QMessageBox, QStatusBar
+    QHBoxLayout, QMessageBox, QStatusBar, QFileDialog
 )
 from PyQt6.QtCore import Qt
 
@@ -13,6 +15,7 @@ from core.ocr_parser import parse_image_file, check_tesseract
 from core.persistence import MappingsStore, SettingsStore, PortfolioStore
 
 from .portfolio_tab import PortfolioTab
+from .instrument_config_tab import InstrumentConfigTab
 from .stats_tab import StatsTab
 from .currency_tab import CurrencyTab
 from .import_dialog import ImportDialog
@@ -94,6 +97,42 @@ class MainWindow(QMainWindow):
         
         toolbar_layout.addStretch()
         
+        # Save Data button
+        save_btn = QPushButton("Save Data")
+        save_btn.setStyleSheet("""
+            QPushButton {
+                padding: 10px 20px;
+                font-size: 14px;
+                background-color: #28a745;
+                color: white;
+                border: none;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #218838;
+            }
+        """)
+        save_btn.clicked.connect(self.on_save_data)
+        toolbar_layout.addWidget(save_btn)
+        
+        # Load Data button
+        load_btn = QPushButton("Load Data")
+        load_btn.setStyleSheet("""
+            QPushButton {
+                padding: 10px 20px;
+                font-size: 14px;
+                background-color: #fd7e14;
+                color: white;
+                border: none;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #e96b02;
+            }
+        """)
+        load_btn.clicked.connect(self.on_load_data)
+        toolbar_layout.addWidget(load_btn)
+        
         layout.addLayout(toolbar_layout)
         
         # Tab widget
@@ -103,6 +142,11 @@ class MainWindow(QMainWindow):
         self.portfolio_tab = PortfolioTab(self.calculator, self.settings_store)
         self.portfolio_tab.portfolio_changed.connect(self.on_portfolio_changed)
         self.tabs.addTab(self.portfolio_tab, "Portfolio")
+        
+        # Instrument Config tab
+        self.config_tab = InstrumentConfigTab(self.calculator, self.settings_store)
+        self.config_tab.config_changed.connect(self.on_config_changed)
+        self.tabs.addTab(self.config_tab, "Instrument Config")
         
         # Stats tab
         self.stats_tab = StatsTab(self.calculator)
@@ -141,6 +185,7 @@ class MainWindow(QMainWindow):
     def refresh_all(self):
         """Refresh all views."""
         self.portfolio_tab.refresh()
+        self.config_tab.refresh()
         self.stats_tab.refresh()
         self.update_status_bar()
     
@@ -166,6 +211,14 @@ class MainWindow(QMainWindow):
     
     def on_portfolio_changed(self):
         """Handle portfolio data change."""
+        self.config_tab.refresh()
+        self.stats_tab.refresh()
+        self.update_status_bar()
+        self.save_all()
+    
+    def on_config_changed(self):
+        """Handle instrument configuration change."""
+        self.portfolio_tab.refresh()
         self.stats_tab.refresh()
         self.update_status_bar()
         self.save_all()
@@ -204,6 +257,128 @@ class MainWindow(QMainWindow):
             self.save_all()
             # Show confirmation
             self.status_bar.showMessage("Portfolio data has been reset.", 5000)
+    
+    def on_save_data(self):
+        """Handle save data button click."""
+        # Generate default filename with current date
+        today = datetime.now()
+        default_filename = f"allocation_data_{today.strftime('%Y.%m.%d')}.json"
+        
+        # Open save file dialog
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Portfolio Data",
+            default_filename,
+            "JSON Files (*.json);;All Files (*)"
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            # Collect all data
+            export_data = {
+                "version": "1.0",
+                "exported_at": datetime.now().isoformat(),
+                "portfolio": {
+                    "holdings": [h.to_dict() for h in self.calculator.portfolio.holdings],
+                    "free_cash": self.calculator.portfolio.free_cash
+                },
+                "settings": {
+                    "currencies": self.settings_store.get_currencies(),
+                    "exchange_rates": self.settings_store.get_exchange_rates()
+                },
+                "mappings": self.mappings_store.mappings
+            }
+            
+            # Write to file
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(export_data, f, indent=2)
+            
+            self.status_bar.showMessage(f"Data saved to {file_path}", 5000)
+            
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Save Error",
+                f"Error saving data:\n{str(e)}"
+            )
+    
+    def on_load_data(self):
+        """Handle load data button click."""
+        # Open file dialog
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load Portfolio Data",
+            "",
+            "JSON Files (*.json);;All Files (*)"
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            # Read and parse file
+            with open(file_path, 'r', encoding='utf-8') as f:
+                import_data = json.load(f)
+            
+            # Validate version
+            version = import_data.get("version", "1.0")
+            if version != "1.0":
+                QMessageBox.warning(
+                    self,
+                    "Version Warning",
+                    f"File version {version} may not be fully compatible."
+                )
+            
+            # Load portfolio data
+            portfolio_data = import_data.get("portfolio", {})
+            holdings = [Holding.from_dict(h) for h in portfolio_data.get("holdings", [])]
+            free_cash = float(portfolio_data.get("free_cash", 0))
+            
+            # Load settings
+            settings_data = import_data.get("settings", {})
+            if "currencies" in settings_data:
+                self.settings_store.set_currencies(settings_data["currencies"])
+            if "exchange_rates" in settings_data:
+                for currency, rate in settings_data["exchange_rates"].items():
+                    self.settings_store.set_exchange_rate(currency, rate)
+            
+            # Load mappings
+            mappings_data = import_data.get("mappings", {})
+            if mappings_data:
+                self.mappings_store.mappings = mappings_data
+                self.mappings_store.save()
+            
+            # Apply to portfolio
+            self.calculator.portfolio.holdings = holdings
+            self.calculator.set_free_cash(free_cash)
+            
+            # Apply mappings to loaded holdings
+            self.mappings_store.apply_mappings(self.calculator.portfolio.holdings)
+            
+            # Refresh all views
+            self.refresh_all()
+            
+            # Save to internal storage
+            self.save_all()
+            
+            self.status_bar.showMessage(
+                f"Loaded {len(holdings)} holdings from {file_path}", 5000
+            )
+            
+        except json.JSONDecodeError as e:
+            QMessageBox.critical(
+                self,
+                "Load Error",
+                f"Invalid JSON file:\n{str(e)}"
+            )
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Load Error",
+                f"Error loading data:\n{str(e)}"
+            )
     
     def process_import_file(self, file_path: str):
         """Process an imported file."""

@@ -1,12 +1,11 @@
 """Portfolio table view for Portfolio Tracker."""
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
-    QHeaderView, QLabel, QLineEdit, QComboBox, QPushButton, QFrame
+    QHeaderView, QLabel, QLineEdit, QFrame
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QDoubleValidator
 
-from core.models import Portfolio, Holding, AssetType, Region
 from core.calculator import PortfolioCalculator
 from core.persistence import SettingsStore
 
@@ -19,19 +18,15 @@ class PortfolioTab(QWidget):
     
     # Column indices for easier reference
     COL_INSTRUMENT = 0
-    COL_CURRENCY = 1
-    COL_POSITION = 2
-    COL_LAST_PRICE = 3
-    COL_MARKET_VALUE = 4
-    COL_MARKET_VALUE_EUR = 5
-    COL_COST_BASIS = 6
-    COL_ALLOCATION = 7
-    COL_TYPE = 8
-    COL_REGION = 9
-    COL_TARGET = 10
-    COL_DIFF_TARGET = 11
-    COL_DAILY_PNL = 12
-    COL_UNREALIZED_PNL = 13
+    COL_POSITION = 1
+    COL_LAST_PRICE = 2
+    COL_MARKET_VALUE = 3
+    COL_MARKET_VALUE_EUR = 4
+    COL_COST_BASIS = 5
+    COL_ALLOCATION = 6
+    COL_TARGET = 7
+    COL_DIFF_TARGET = 8
+    COL_UNREALIZED_PNL = 9
     
     def __init__(self, calculator: PortfolioCalculator, settings_store: SettingsStore, parent=None):
         super().__init__(parent)
@@ -86,9 +81,9 @@ class PortfolioTab(QWidget):
     def setup_table(self):
         """Set up the holdings table."""
         columns = [
-            "Instrument", "Currency", "Position", "Last Price", "Market Value",
-            "Value (EUR)", "Cost Basis", "Allocation %", "Type", "Region", 
-            "Target %", "Diff w/ Target", "Daily P&L", "Unrealized P&L"
+            "Instrument", "Position", "Last Price", "Market Value",
+            "Value (EUR)", "Cost Basis", "Allocation %",
+            "Target %", "Diff w/ Target", "Unrealized P&L"
         ]
         
         self.table.setColumnCount(len(columns))
@@ -116,9 +111,6 @@ class PortfolioTab(QWidget):
         # Create allocation lookup
         alloc_map = {a.instrument: a for a in allocations}
         
-        # Get available currencies
-        currencies = self.settings_store.get_currencies()
-        
         self.table.setRowCount(len(portfolio.holdings))
         
         for row, holding in enumerate(portfolio.holdings):
@@ -127,19 +119,6 @@ class PortfolioTab(QWidget):
             # Instrument (editable)
             item = QTableWidgetItem(holding.instrument)
             self.table.setItem(row, self.COL_INSTRUMENT, item)
-            
-            # Currency (editable combo)
-            currency_combo = QComboBox()
-            for curr in currencies:
-                currency_combo.addItem(curr)
-            # Add current currency if not in list
-            if holding.currency not in currencies:
-                currency_combo.addItem(holding.currency)
-            currency_combo.setCurrentText(holding.currency)
-            currency_combo.currentTextChanged.connect(
-                lambda text, r=row: self.on_currency_changed(r, text)
-            )
-            self.table.setCellWidget(row, self.COL_CURRENCY, currency_combo)
             
             # Position (editable)
             item = QTableWidgetItem(f"{holding.position:.2f}")
@@ -177,26 +156,6 @@ class PortfolioTab(QWidget):
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.table.setItem(row, self.COL_ALLOCATION, item)
             
-            # Type (editable combo)
-            type_combo = QComboBox()
-            for t in AssetType:
-                type_combo.addItem(t.value, t)
-            type_combo.setCurrentText(holding.asset_type.value)
-            type_combo.currentIndexChanged.connect(
-                lambda idx, r=row: self.on_type_changed(r, idx)
-            )
-            self.table.setCellWidget(row, self.COL_TYPE, type_combo)
-            
-            # Region (editable combo)
-            region_combo = QComboBox()
-            for r in Region:
-                region_combo.addItem(r.value, r)
-            region_combo.setCurrentText(holding.region.value)
-            region_combo.currentIndexChanged.connect(
-                lambda idx, r=row: self.on_region_changed(r, idx)
-            )
-            self.table.setCellWidget(row, self.COL_REGION, region_combo)
-            
             # Target % (editable)
             item = QTableWidgetItem(f"{holding.target_allocation * 100:.1f}")
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -214,15 +173,6 @@ class PortfolioTab(QWidget):
             elif diff < -0.001:
                 item.setForeground(Qt.GlobalColor.darkRed)
             self.table.setItem(row, self.COL_DIFF_TARGET, item)
-            
-            # Daily P&L (editable)
-            item = QTableWidgetItem(f"{holding.daily_pnl:.2f}")
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            if holding.daily_pnl > 0:
-                item.setForeground(Qt.GlobalColor.darkGreen)
-            elif holding.daily_pnl < 0:
-                item.setForeground(Qt.GlobalColor.darkRed)
-            self.table.setItem(row, self.COL_DAILY_PNL, item)
             
             # Unrealized P&L (editable)
             item = QTableWidgetItem(f"{holding.unrealized_pnl:.2f}")
@@ -280,29 +230,6 @@ class PortfolioTab(QWidget):
         finally:
             self._updating_free_cash = False
     
-    def on_currency_changed(self, row: int, currency: str):
-        """Handle currency change for a holding."""
-        if row < len(self.calculator.portfolio.holdings):
-            self.calculator.portfolio.holdings[row].currency = currency
-            self.refresh()
-            self.portfolio_changed.emit()
-    
-    def on_type_changed(self, row: int, index: int):
-        """Handle asset type change for a holding."""
-        if row < len(self.calculator.portfolio.holdings):
-            combo = self.table.cellWidget(row, self.COL_TYPE)
-            new_type = combo.currentData()
-            self.calculator.portfolio.holdings[row].asset_type = new_type
-            self.portfolio_changed.emit()
-    
-    def on_region_changed(self, row: int, index: int):
-        """Handle region change for a holding."""
-        if row < len(self.calculator.portfolio.holdings):
-            combo = self.table.cellWidget(row, self.COL_REGION)
-            new_region = combo.currentData()
-            self.calculator.portfolio.holdings[row].region = new_region
-            self.portfolio_changed.emit()
-    
     def on_cell_changed(self, row: int, col: int):
         """Handle cell value change."""
         if row >= len(self.calculator.portfolio.holdings):
@@ -349,13 +276,6 @@ class PortfolioTab(QWidget):
                 # Update target allocation (percentage)
                 value = float(text.replace(',', '')) / 100
                 holding.target_allocation = value
-                self.refresh()
-                self.portfolio_changed.emit()
-            
-            elif col == self.COL_DAILY_PNL:
-                # Update daily P&L
-                value = float(text.replace(',', ''))
-                holding.daily_pnl = value
                 self.refresh()
                 self.portfolio_changed.emit()
             

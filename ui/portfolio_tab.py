@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
     QHeaderView, QLabel, QLineEdit, QFrame
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QDoubleValidator
+from PyQt6.QtGui import QDoubleValidator, QColor, QBrush
 
 from core.calculator import PortfolioCalculator
 from core.persistence import SettingsStore
@@ -25,8 +25,17 @@ class PortfolioTab(QWidget):
     COL_COST_BASIS = 5
     COL_ALLOCATION = 6
     COL_TARGET = 7
-    COL_DIFF_TARGET = 8
-    COL_UNREALIZED_PNL = 9
+    COL_DIFF_TARGET_PCT = 8  # Renamed: Diff w/ Target, %
+    COL_DIFF_IN_CASH = 9     # New: Diff in Cash
+    COL_DIFF_IN_SHARES = 10  # New: Diff in Shares
+    COL_UNREALIZED_PNL = 11
+    
+    # Colors for alternating rows
+    ROW_COLOR_EVEN = QColor(255, 255, 255)  # White
+    ROW_COLOR_ODD = QColor(245, 245, 250)   # Light gray-blue
+    
+    # Highlight color for target-related columns
+    TARGET_HIGHLIGHT_COLOR = QColor(255, 250, 230)  # Light yellow/cream
     
     def __init__(self, calculator: PortfolioCalculator, settings_store: SettingsStore, parent=None):
         super().__init__(parent)
@@ -83,7 +92,8 @@ class PortfolioTab(QWidget):
         columns = [
             "Instrument", "Position", "Last Price", "Market Value",
             "Value (EUR)", "Cost Basis", "Allocation %",
-            "Target %", "Diff w/ Target", "Unrealized P&L"
+            "Target %", "Diff w/ Target, %", "Diff in Cash", "Diff in Shares",
+            "Unrealized P&L"
         ]
         
         self.table.setColumnCount(len(columns))
@@ -98,8 +108,27 @@ class PortfolioTab(QWidget):
         # Enable sorting
         self.table.setSortingEnabled(True)
         
+        # Disable alternating row colors from Qt (we'll do it manually for more control)
+        self.table.setAlternatingRowColors(False)
+        
         # Connect cell change signal
         self.table.cellChanged.connect(self.on_cell_changed)
+    
+    def get_row_background(self, row: int, col: int) -> QColor:
+        """Get background color for a cell based on row and column."""
+        # Target-related columns get highlight color
+        if col in (self.COL_DIFF_TARGET_PCT, self.COL_DIFF_IN_CASH, self.COL_DIFF_IN_SHARES):
+            # Blend highlight with alternating color
+            if row % 2 == 0:
+                return QColor(255, 248, 220)  # Light yellow for even rows
+            else:
+                return QColor(250, 243, 210)  # Slightly darker yellow for odd rows
+        
+        # Regular alternating colors
+        if row % 2 == 0:
+            return self.ROW_COLOR_EVEN
+        else:
+            return self.ROW_COLOR_ODD
     
     def refresh(self):
         """Refresh the table with current portfolio data."""
@@ -111,30 +140,55 @@ class PortfolioTab(QWidget):
         # Create allocation lookup
         alloc_map = {a.instrument: a for a in allocations}
         
+        # Get total portfolio value in EUR for calculating diff in cash
+        total_eur = self.calculator.get_total_eur()
+        
         self.table.setRowCount(len(portfolio.holdings))
         
         for row, holding in enumerate(portfolio.holdings):
             alloc = alloc_map.get(holding.instrument)
+            currency_symbol = self.get_currency_symbol(holding.currency)
+            
+            # Calculate diff values
+            diff_pct = alloc.diff_with_target if alloc else 0
+            
+            # Diff in cash: (target_allocation - current_allocation) * total_portfolio_EUR * (1/exchange_rate)
+            # This gives the amount in the instrument's currency
+            exchange_rate = self.settings_store.get_exchange_rate(holding.currency)
+            if exchange_rate > 0:
+                diff_in_cash_eur = diff_pct * total_eur
+                diff_in_cash = diff_in_cash_eur / exchange_rate  # Convert to instrument currency
+            else:
+                diff_in_cash = 0
+            
+            # Diff in shares: diff_in_cash / last_price
+            if holding.last_price > 0:
+                diff_in_shares = diff_in_cash / holding.last_price
+            else:
+                diff_in_shares = 0
             
             # Instrument (editable)
             item = QTableWidgetItem(holding.instrument)
+            item.setBackground(QBrush(self.get_row_background(row, self.COL_INSTRUMENT)))
             self.table.setItem(row, self.COL_INSTRUMENT, item)
             
             # Position (editable)
             item = QTableWidgetItem(f"{holding.position:.2f}")
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setBackground(QBrush(self.get_row_background(row, self.COL_POSITION)))
             self.table.setItem(row, self.COL_POSITION, item)
             
             # Last Price (editable) - in instrument currency
             item = QTableWidgetItem(f"{holding.last_price:.2f}")
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setBackground(QBrush(self.get_row_background(row, self.COL_LAST_PRICE)))
             self.table.setItem(row, self.COL_LAST_PRICE, item)
             
             # Market Value (read-only) - in instrument currency
-            currency_symbol = self.get_currency_symbol(holding.currency)
             item = QTableWidgetItem(f"{currency_symbol}{holding.market_value:,.2f}")
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setBackground(QBrush(self.get_row_background(row, self.COL_MARKET_VALUE)))
             self.table.setItem(row, self.COL_MARKET_VALUE, item)
             
             # Market Value (EUR) - converted
@@ -142,11 +196,13 @@ class PortfolioTab(QWidget):
             item = QTableWidgetItem(f"€{market_value_eur:,.2f}")
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setBackground(QBrush(self.get_row_background(row, self.COL_MARKET_VALUE_EUR)))
             self.table.setItem(row, self.COL_MARKET_VALUE_EUR, item)
             
             # Cost Basis (editable)
             item = QTableWidgetItem(f"{holding.cost_basis:.2f}")
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setBackground(QBrush(self.get_row_background(row, self.COL_COST_BASIS)))
             self.table.setItem(row, self.COL_COST_BASIS, item)
             
             # Allocation % (read-only, calculated)
@@ -154,29 +210,54 @@ class PortfolioTab(QWidget):
             item = QTableWidgetItem(f"{alloc_pct * 100:.2f}%")
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setBackground(QBrush(self.get_row_background(row, self.COL_ALLOCATION)))
             self.table.setItem(row, self.COL_ALLOCATION, item)
             
             # Target % (editable)
             item = QTableWidgetItem(f"{holding.target_allocation * 100:.1f}")
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setBackground(QBrush(self.get_row_background(row, self.COL_TARGET)))
             self.table.setItem(row, self.COL_TARGET, item)
             
-            # Diff w/ Target (read-only, calculated)
-            diff = alloc.diff_with_target if alloc else 0
-            diff_text = f"{diff * 100:+.2f}%"
+            # Diff w/ Target, % (read-only, calculated) - HIGHLIGHTED
+            diff_text = f"{diff_pct * 100:+.2f}%"
             item = QTableWidgetItem(diff_text)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            # Color based on positive/negative
-            if diff > 0.001:
+            item.setBackground(QBrush(self.get_row_background(row, self.COL_DIFF_TARGET_PCT)))
+            # Color text based on positive/negative
+            if diff_pct > 0.001:
                 item.setForeground(Qt.GlobalColor.darkGreen)
-            elif diff < -0.001:
+            elif diff_pct < -0.001:
                 item.setForeground(Qt.GlobalColor.darkRed)
-            self.table.setItem(row, self.COL_DIFF_TARGET, item)
+            self.table.setItem(row, self.COL_DIFF_TARGET_PCT, item)
+            
+            # Diff in Cash (read-only, calculated) - HIGHLIGHTED
+            item = QTableWidgetItem(f"{currency_symbol}{diff_in_cash:+,.2f}")
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setBackground(QBrush(self.get_row_background(row, self.COL_DIFF_IN_CASH)))
+            if diff_in_cash > 0.01:
+                item.setForeground(Qt.GlobalColor.darkGreen)
+            elif diff_in_cash < -0.01:
+                item.setForeground(Qt.GlobalColor.darkRed)
+            self.table.setItem(row, self.COL_DIFF_IN_CASH, item)
+            
+            # Diff in Shares (read-only, calculated) - HIGHLIGHTED
+            item = QTableWidgetItem(f"{diff_in_shares:+,.2f}")
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setBackground(QBrush(self.get_row_background(row, self.COL_DIFF_IN_SHARES)))
+            if diff_in_shares > 0.01:
+                item.setForeground(Qt.GlobalColor.darkGreen)
+            elif diff_in_shares < -0.01:
+                item.setForeground(Qt.GlobalColor.darkRed)
+            self.table.setItem(row, self.COL_DIFF_IN_SHARES, item)
             
             # Unrealized P&L (editable)
             item = QTableWidgetItem(f"{holding.unrealized_pnl:.2f}")
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setBackground(QBrush(self.get_row_background(row, self.COL_UNREALIZED_PNL)))
             if holding.unrealized_pnl > 0:
                 item.setForeground(Qt.GlobalColor.darkGreen)
             elif holding.unrealized_pnl < 0:

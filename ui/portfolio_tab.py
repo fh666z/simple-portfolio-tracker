@@ -1,12 +1,14 @@
 """Portfolio table view for Portfolio Tracker."""
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
-    QHeaderView, QLabel, QLineEdit, QFrame
+    QHeaderView, QLabel, QLineEdit, QFrame, QPushButton, QMenu, QMessageBox,
+    QStackedWidget
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QDoubleValidator, QBrush
+from PyQt6.QtGui import QDoubleValidator, QBrush, QAction
 
 from core.calculator import PortfolioCalculator
+from core.models import AssetType, Region
 from core.persistence import SettingsStore
 from .utils import (
     NumericTableItem, get_currency_symbol, parse_numeric_text,
@@ -20,20 +22,23 @@ class PortfolioTab(QWidget):
     
     # Signal emitted when portfolio data changes
     portfolio_changed = pyqtSignal()
+    # Signal emitted when user requests import from empty state
+    import_requested = pyqtSignal()
     
     # Column indices for easier reference
-    COL_INSTRUMENT = 0
-    COL_POSITION = 1
-    COL_LAST_PRICE = 2
-    COL_MARKET_VALUE = 3
-    COL_MARKET_VALUE_EUR = 4
-    COL_COST_BASIS = 5
-    COL_ALLOCATION = 6
-    COL_TARGET = 7
-    COL_DIFF_TARGET_PCT = 8  # Diff w/ Target, %
-    COL_DIFF_IN_CASH = 9     # Diff in Cash
-    COL_DIFF_IN_SHARES = 10  # Diff in Shares
-    COL_UNREALIZED_PNL = 11
+    COL_DELETE = 0
+    COL_INSTRUMENT = 1
+    COL_POSITION = 2
+    COL_LAST_PRICE = 3
+    COL_MARKET_VALUE = 4
+    COL_MARKET_VALUE_EUR = 5
+    COL_COST_BASIS = 6
+    COL_ALLOCATION = 7
+    COL_TARGET = 8
+    COL_DIFF_TARGET_PCT = 9  # Diff w/ Target, %
+    COL_DIFF_IN_CASH = 10     # Diff in Cash
+    COL_DIFF_IN_SHARES = 11  # Diff in Shares
+    COL_UNREALIZED_PNL = 12
     
     # Columns that should be highlighted (target-related)
     HIGHLIGHT_COLUMNS = {COL_DIFF_TARGET_PCT, COL_DIFF_IN_CASH, COL_DIFF_IN_SHARES}
@@ -43,17 +48,138 @@ class PortfolioTab(QWidget):
         self.calculator = calculator
         self.settings_store = settings_store
         self._updating_free_cash = False  # Guard against double-processing
+        self._filter_text = ""  # Current search filter
+        self._filter_type = None  # Current type filter (None = all)
+        self._filter_region = None  # Current region filter (None = all)
         self.setup_ui()
     
     def setup_ui(self):
         """Set up the UI components."""
         layout = QVBoxLayout(self)
         
+        # Stacked widget to switch between empty state and content
+        self.stacked_widget = QStackedWidget()
+        
+        # === Empty state widget ===
+        empty_widget = QWidget()
+        empty_layout = QVBoxLayout(empty_widget)
+        empty_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        empty_icon = QLabel("📊")
+        empty_icon.setStyleSheet("font-size: 64px;")
+        empty_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_layout.addWidget(empty_icon)
+        
+        empty_title = QLabel("No Holdings Yet")
+        empty_title.setStyleSheet("font-size: 24px; font-weight: bold; color: #333; margin-top: 10px;")
+        empty_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_layout.addWidget(empty_title)
+        
+        empty_desc = QLabel("Import your portfolio data to get started tracking\nyour investments and allocation targets.")
+        empty_desc.setStyleSheet("font-size: 14px; color: #666; margin: 10px 0;")
+        empty_desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_layout.addWidget(empty_desc)
+        
+        import_btn = QPushButton("Import Portfolio Data")
+        import_btn.setStyleSheet("""
+            QPushButton {
+                padding: 15px 30px;
+                font-size: 16px;
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                margin-top: 20px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+        """)
+        import_btn.clicked.connect(self.request_import)
+        
+        btn_container = QHBoxLayout()
+        btn_container.addStretch()
+        btn_container.addWidget(import_btn)
+        btn_container.addStretch()
+        empty_layout.addLayout(btn_container)
+        
+        empty_layout.addStretch()
+        
+        self.stacked_widget.addWidget(empty_widget)  # Index 0: empty state
+        
+        # === Content widget (table + filters) ===
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Filter bar
+        filter_frame = QFrame()
+        filter_layout = QHBoxLayout(filter_frame)
+        filter_layout.setContentsMargins(0, 0, 0, 5)
+        
+        # Search input
+        filter_layout.addWidget(QLabel("Search:"))
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Filter by instrument name...")
+        self.search_input.setMaximumWidth(250)
+        self.search_input.textChanged.connect(self.on_filter_changed)
+        self.search_input.setClearButtonEnabled(True)
+        filter_layout.addWidget(self.search_input)
+        
+        filter_layout.addSpacing(20)
+        
+        # Type filter buttons
+        filter_layout.addWidget(QLabel("Type:"))
+        self.type_filter_buttons = {}
+        
+        all_type_btn = QPushButton("All")
+        all_type_btn.setCheckable(True)
+        all_type_btn.setChecked(True)
+        all_type_btn.setStyleSheet(self._get_filter_btn_style())
+        all_type_btn.clicked.connect(lambda: self.set_type_filter(None))
+        filter_layout.addWidget(all_type_btn)
+        self.type_filter_buttons[None] = all_type_btn
+        
+        for asset_type in [AssetType.EQUITY, AssetType.BONDS, AssetType.COMMODITY, AssetType.THEMATIC, AssetType.REIT]:
+            btn = QPushButton(asset_type.value)
+            btn.setCheckable(True)
+            btn.setStyleSheet(self._get_filter_btn_style())
+            btn.clicked.connect(lambda checked, t=asset_type: self.set_type_filter(t))
+            filter_layout.addWidget(btn)
+            self.type_filter_buttons[asset_type] = btn
+        
+        filter_layout.addStretch()
+        
+        # Clear filters button
+        clear_btn = QPushButton("Clear Filters")
+        clear_btn.setStyleSheet("""
+            QPushButton {
+                padding: 4px 10px;
+                font-size: 12px;
+                background-color: transparent;
+                color: #666;
+                border: 1px solid #ccc;
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background-color: #f0f0f0;
+                border-color: #999;
+            }
+        """)
+        clear_btn.clicked.connect(self.clear_filters)
+        filter_layout.addWidget(clear_btn)
+        
+        content_layout.addWidget(filter_frame)
+        
         # Holdings table
         self.table = QTableWidget()
         self.table.setAlternatingRowColors(True)
         self.setup_table()
-        layout.addWidget(self.table)
+        content_layout.addWidget(self.table)
+        
+        self.stacked_widget.addWidget(content_widget)  # Index 1: content
+        
+        layout.addWidget(self.stacked_widget)
         
         # Summary section
         summary_frame = QFrame()
@@ -92,22 +218,45 @@ class PortfolioTab(QWidget):
     def setup_table(self):
         """Set up the holdings table."""
         columns = [
-            "Instrument", "Position", "Last Price", "Market Value",
+            "", "Instrument", "Position", "Last Price", "Market Value",
             "Value in (EUR)", "Cost Basis", "Allocation %",
             "Target %", "Diff w/ Target, %", "Diff in Cash", "Diff in Shares",
             "Unrealized P&L"
         ]
         
+        # Column tooltips for better UX
+        column_tooltips = {
+            self.COL_DELETE: "Click to delete this holding",
+            self.COL_INSTRUMENT: "Instrument name/ticker symbol",
+            self.COL_POSITION: "Number of shares/units held (editable)",
+            self.COL_LAST_PRICE: "Current price per share (editable)",
+            self.COL_MARKET_VALUE: "Position × Last Price (in original currency)",
+            self.COL_MARKET_VALUE_EUR: "Market value converted to EUR",
+            self.COL_COST_BASIS: "Total cost of position (editable)",
+            self.COL_ALLOCATION: "Current allocation % (excluding free cash)",
+            self.COL_TARGET: "Target allocation % (editable)",
+            self.COL_DIFF_TARGET_PCT: "Target % minus Current % (positive = underweight)",
+            self.COL_DIFF_IN_CASH: "Amount to buy/sell to reach target",
+            self.COL_DIFF_IN_SHARES: "Number of shares to buy/sell to reach target",
+            self.COL_UNREALIZED_PNL: "Unrealized profit/loss (editable)",
+        }
+        
         self.table.setColumnCount(len(columns))
         self.table.setHorizontalHeaderLabels(columns)
         
+        # Set header tooltips
+        for col, tooltip in column_tooltips.items():
+            self.table.horizontalHeaderItem(col).setToolTip(tooltip)
+        
         # Set column resize modes
         header = self.table.horizontalHeader()
+        header.setSectionResizeMode(self.COL_DELETE, QHeaderView.ResizeMode.Fixed)
+        header.resizeSection(self.COL_DELETE, 40)  # Small fixed width for delete button
         header.setSectionResizeMode(self.COL_INSTRUMENT, QHeaderView.ResizeMode.Stretch)
-        for i in range(1, len(columns)):
+        for i in range(self.COL_POSITION, len(columns)):
             header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
         
-        # Enable column reordering with persistence
+        # Enable column reordering with persistence (skip delete column)
         setup_movable_columns(self.table, 'portfolio', self.settings_store)
         
         # Enable sorting
@@ -118,6 +267,77 @@ class PortfolioTab(QWidget):
         
         # Connect cell change signal
         self.table.cellChanged.connect(self.on_cell_changed)
+        
+        # Enable context menu for right-click delete
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.show_context_menu)
+    
+    def _get_filter_btn_style(self):
+        """Get the stylesheet for filter buttons."""
+        return """
+            QPushButton {
+                padding: 4px 8px;
+                font-size: 11px;
+                background-color: #f8f9fa;
+                color: #495057;
+                border: 1px solid #dee2e6;
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background-color: #e9ecef;
+                border-color: #adb5bd;
+            }
+            QPushButton:checked {
+                background-color: #2196F3;
+                color: white;
+                border-color: #1976D2;
+            }
+        """
+    
+    def set_type_filter(self, asset_type):
+        """Set the type filter and update button states."""
+        self._filter_type = asset_type
+        for t, btn in self.type_filter_buttons.items():
+            btn.setChecked(t == asset_type)
+        self.refresh()
+    
+    def on_filter_changed(self, text):
+        """Handle search filter text change."""
+        self._filter_text = text.lower().strip()
+        self.refresh()
+    
+    def clear_filters(self):
+        """Clear all filters."""
+        self._filter_text = ""
+        self._filter_type = None
+        self._filter_region = None
+        self.search_input.clear()
+        for t, btn in self.type_filter_buttons.items():
+            btn.setChecked(t is None)
+        self.refresh()
+    
+    def request_import(self):
+        """Request import from parent window."""
+        self.import_requested.emit()
+    
+    def _holding_matches_filter(self, holding):
+        """Check if a holding matches current filters."""
+        # Text filter
+        if self._filter_text:
+            if self._filter_text not in holding.instrument.lower():
+                return False
+        
+        # Type filter
+        if self._filter_type is not None:
+            if holding.asset_type != self._filter_type:
+                return False
+        
+        # Region filter
+        if self._filter_region is not None:
+            if holding.region != self._filter_region:
+                return False
+        
+        return True
     
     def get_row_background(self, row: int, col: int):
         """Get background color for a cell based on row and column."""
@@ -129,9 +349,18 @@ class PortfolioTab(QWidget):
     
     def refresh(self):
         """Refresh the table with current portfolio data."""
+        portfolio = self.calculator.portfolio
+        
+        # Switch between empty state and content
+        if len(portfolio.holdings) == 0:
+            self.stacked_widget.setCurrentIndex(0)  # Show empty state
+            self.update_summary()
+            return
+        else:
+            self.stacked_widget.setCurrentIndex(1)  # Show content
+        
         self.table.blockSignals(True)  # Prevent triggering cellChanged
         
-        portfolio = self.calculator.portfolio
         allocations = self.calculator.get_allocations()
         
         # Create allocation lookup
@@ -140,9 +369,18 @@ class PortfolioTab(QWidget):
         # Get total portfolio value in EUR for calculating diff in cash
         total_eur = self.calculator.get_total_eur()
         
-        self.table.setRowCount(len(portfolio.holdings))
+        # Filter holdings based on current filters
+        filtered_holdings = []
+        self._row_to_holding_idx = {}  # Map visible row to actual holding index
         
-        for row, holding in enumerate(portfolio.holdings):
+        for idx, holding in enumerate(portfolio.holdings):
+            if self._holding_matches_filter(holding):
+                self._row_to_holding_idx[len(filtered_holdings)] = idx
+                filtered_holdings.append((idx, holding))
+        
+        self.table.setRowCount(len(filtered_holdings))
+        
+        for row, (holding_idx, holding) in enumerate(filtered_holdings):
             alloc = alloc_map.get(holding.instrument)
             currency_symbol = get_currency_symbol(holding.currency)
             
@@ -163,6 +401,27 @@ class PortfolioTab(QWidget):
                 diff_in_shares = diff_in_cash / holding.last_price
             else:
                 diff_in_shares = 0
+            
+            # Delete button
+            delete_btn = QPushButton("×")
+            delete_btn.setFixedSize(24, 24)
+            delete_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: transparent;
+                    color: #999;
+                    border: none;
+                    font-size: 16px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    color: #dc3545;
+                    background-color: #fee;
+                    border-radius: 12px;
+                }
+            """)
+            delete_btn.setToolTip(f"Delete {holding.instrument}")
+            delete_btn.clicked.connect(lambda checked, idx=holding_idx: self.delete_holding_by_idx(idx))
+            self.table.setCellWidget(row, self.COL_DELETE, delete_btn)
             
             # Instrument (editable)
             item = QTableWidgetItem(holding.instrument)
@@ -297,14 +556,16 @@ class PortfolioTab(QWidget):
     
     def on_cell_changed(self, row: int, col: int):
         """Handle cell value change."""
-        if row >= len(self.calculator.portfolio.holdings):
+        # Get actual holding index from row mapping
+        holding_idx = self._row_to_holding_idx.get(row)
+        if holding_idx is None or holding_idx >= len(self.calculator.portfolio.holdings):
             return
         
         item = self.table.item(row, col)
         if not item:
             return
         
-        holding = self.calculator.portfolio.holdings[row]
+        holding = self.calculator.portfolio.holdings[holding_idx]
         text = item.text().strip()
         
         try:
@@ -354,3 +615,48 @@ class PortfolioTab(QWidget):
         except ValueError:
             # Invalid input, refresh to show original value
             self.refresh()
+    
+    def delete_holding(self, row: int):
+        """Delete a holding at the specified visible row."""
+        # Get actual holding index from row mapping
+        holding_idx = self._row_to_holding_idx.get(row)
+        if holding_idx is None:
+            return
+        self.delete_holding_by_idx(holding_idx)
+    
+    def delete_holding_by_idx(self, holding_idx: int):
+        """Delete a holding by its actual index in the holdings list."""
+        if holding_idx >= len(self.calculator.portfolio.holdings):
+            return
+        
+        holding = self.calculator.portfolio.holdings[holding_idx]
+        
+        reply = QMessageBox.question(
+            self,
+            "Delete Holding",
+            f"Are you sure you want to delete '{holding.instrument}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self.calculator.portfolio.holdings.pop(holding_idx)
+            self.refresh()
+            self.portfolio_changed.emit()
+    
+    def show_context_menu(self, position):
+        """Show context menu for right-click actions."""
+        row = self.table.rowAt(position.y())
+        holding_idx = self._row_to_holding_idx.get(row)
+        if holding_idx is None or holding_idx >= len(self.calculator.portfolio.holdings):
+            return
+        
+        holding = self.calculator.portfolio.holdings[holding_idx]
+        
+        menu = QMenu(self)
+        
+        delete_action = QAction(f"Delete '{holding.instrument}'", self)
+        delete_action.triggered.connect(lambda: self.delete_holding_by_idx(holding_idx))
+        menu.addAction(delete_action)
+        
+        menu.exec(self.table.viewport().mapToGlobal(position))

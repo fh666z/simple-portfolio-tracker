@@ -9,7 +9,7 @@ from PyQt6.QtGui import QColor
 from core.models import Holding
 from .utils import (
     parse_numeric_text, ALIGN_RIGHT_CENTER,
-    WARNING_COLOR_YELLOW, WARNING_COLOR_RED
+    get_warning_colors
 )
 
 
@@ -165,21 +165,23 @@ class ReviewDialog(QDialog):
     
     def check_row_issues(self, row: int, holding: Holding):
         """Check for potential issues in a row and highlight if needed."""
+        warning_yellow, warning_red = get_warning_colors()
+        
         # Check for zero/missing market value
         if holding.market_value == 0:
-            self.highlight_cell(row, 5, WARNING_COLOR_YELLOW)
+            self.highlight_cell(row, 5, warning_yellow)
         
         # Check for zero position
         if holding.position == 0:
-            self.highlight_cell(row, 1, WARNING_COLOR_YELLOW)
+            self.highlight_cell(row, 1, warning_yellow)
         
         # Check for suspicious values (negative position, etc.)
         if holding.position < 0:
-            self.highlight_cell(row, 1, WARNING_COLOR_RED)
+            self.highlight_cell(row, 1, warning_red)
         
         # Check for missing cost basis when market value exists
         if holding.market_value > 0 and holding.cost_basis == 0:
-            self.highlight_cell(row, 4, WARNING_COLOR_YELLOW)
+            self.highlight_cell(row, 4, warning_yellow)
     
     def highlight_cell(self, row: int, col: int, color: QColor):
         """Highlight a cell with the given color."""

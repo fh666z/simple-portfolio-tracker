@@ -1,13 +1,105 @@
 """Statistics view for Portfolio Tracker."""
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem,
-    QHeaderView, QGroupBox, QSplitter
+    QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
+    QHeaderView, QGroupBox, QSplitter, QFrame
 )
 from PyQt6.QtCore import Qt
+
+import matplotlib
+matplotlib.use('QtAgg')  # Use Qt backend
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
 
 from core.calculator import PortfolioCalculator
 from core.persistence import SettingsStore
 from .utils import NumericTableItem, setup_movable_columns, ALIGN_RIGHT_CENTER
+
+
+class PieChartWidget(QWidget):
+    """Widget displaying a pie chart using matplotlib."""
+    
+    # Color palette for charts
+    COLORS = [
+        '#4e79a7', '#f28e2c', '#e15759', '#76b7b2', '#59a14f',
+        '#edc949', '#af7aa1', '#ff9da7', '#9c755f', '#bab0ab'
+    ]
+    
+    def __init__(self, title: str = "", parent=None):
+        super().__init__(parent)
+        self.title = title
+        self.setup_ui()
+    
+    def setup_ui(self):
+        """Set up the chart widget."""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(5, 5, 5, 5)
+        
+        # Create matplotlib figure
+        self.figure = Figure(figsize=(4, 3), dpi=100)
+        self.figure.patch.set_facecolor('none')  # Transparent background
+        self.canvas = FigureCanvas(self.figure)
+        self.canvas.setStyleSheet("background-color: transparent;")
+        
+        layout.addWidget(self.canvas)
+    
+    def update_chart(self, data: list[tuple[str, float]]):
+        """Update the pie chart with new data.
+        
+        Args:
+            data: List of (label, value) tuples
+        """
+        self.figure.clear()
+        
+        # Filter out zero/negative values
+        filtered_data = [(label, value) for label, value in data if value > 0.001]
+        
+        if not filtered_data:
+            # Show "No data" message
+            ax = self.figure.add_subplot(111)
+            ax.text(0.5, 0.5, "No data", ha='center', va='center', 
+                    fontsize=12, color='#999')
+            ax.set_xlim(0, 1)
+            ax.set_ylim(0, 1)
+            ax.axis('off')
+            self.canvas.draw()
+            return
+        
+        labels, values = zip(*filtered_data)
+        colors = self.COLORS[:len(values)]
+        
+        ax = self.figure.add_subplot(111)
+        
+        # Create pie chart
+        wedges, texts, autotexts = ax.pie(
+            values,
+            labels=None,  # We'll use legend instead
+            autopct=lambda pct: f'{pct:.1f}%' if pct > 3 else '',
+            colors=colors,
+            startangle=90,
+            pctdistance=0.75
+        )
+        
+        # Style the percentage text
+        for autotext in autotexts:
+            autotext.set_fontsize(8)
+            autotext.set_color('white')
+            autotext.set_fontweight('bold')
+        
+        # Add title
+        if self.title:
+            ax.set_title(self.title, fontsize=11, fontweight='bold', pad=10)
+        
+        # Add legend
+        ax.legend(
+            wedges, 
+            [f'{label} ({value*100:.1f}%)' for label, value in filtered_data],
+            loc='center left',
+            bbox_to_anchor=(1, 0.5),
+            fontsize=8
+        )
+        
+        self.figure.tight_layout()
+        self.canvas.draw()
 
 
 class StatsTab(QWidget):
@@ -23,6 +115,28 @@ class StatsTab(QWidget):
         """Set up the UI components."""
         layout = QVBoxLayout(self)
         
+        # Top section: Charts
+        charts_frame = QFrame()
+        charts_layout = QHBoxLayout(charts_frame)
+        charts_layout.setContentsMargins(0, 0, 0, 10)
+        
+        # Type pie chart
+        type_chart_group = QGroupBox("Allocation by Type")
+        type_chart_layout = QVBoxLayout(type_chart_group)
+        self.type_chart = PieChartWidget()
+        type_chart_layout.addWidget(self.type_chart)
+        charts_layout.addWidget(type_chart_group)
+        
+        # Region pie chart
+        region_chart_group = QGroupBox("Allocation by Region")
+        region_chart_layout = QVBoxLayout(region_chart_group)
+        self.region_chart = PieChartWidget()
+        region_chart_layout.addWidget(self.region_chart)
+        charts_layout.addWidget(region_chart_group)
+        
+        layout.addWidget(charts_frame)
+        
+        # Bottom section: Tables
         # Create splitter for side-by-side tables
         splitter = QSplitter(Qt.Orientation.Horizontal)
         
@@ -67,6 +181,16 @@ class StatsTab(QWidget):
         table.setColumnCount(len(columns))
         table.setHorizontalHeaderLabels(columns)
         
+        # Set header tooltips
+        tooltips = [
+            "Asset type or region category",
+            "Allocation % of invested capital (excludes free cash)",
+            "Allocation % of total portfolio (includes free cash)",
+            "Sum of target allocations for this category"
+        ]
+        for i, tooltip in enumerate(tooltips):
+            table.horizontalHeaderItem(i).setToolTip(tooltip)
+        
         header = table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for i in range(1, len(columns)):
@@ -84,6 +208,17 @@ class StatsTab(QWidget):
         columns = ["Type", "Region", "Current %", "Current All %", "Target %"]
         table.setColumnCount(len(columns))
         table.setHorizontalHeaderLabels(columns)
+        
+        # Set header tooltips
+        tooltips = [
+            "Asset type (Equity, Bonds, etc.)",
+            "Geographic region (US, EU, EM, Global)",
+            "Allocation % of invested capital (excludes free cash)",
+            "Allocation % of total portfolio (includes free cash)",
+            "Sum of target allocations for this combination"
+        ]
+        for i, tooltip in enumerate(tooltips):
+            table.horizontalHeaderItem(i).setToolTip(tooltip)
         
         header = table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
@@ -105,11 +240,15 @@ class StatsTab(QWidget):
         self.refresh_detailed_table()
     
     def refresh_type_table(self):
-        """Refresh the type stats table."""
+        """Refresh the type stats table and chart."""
         stats = self.calculator.get_stats_by_type()
         
         # Filter out categories with no allocation
         stats = [s for s in stats if s.current > 0 or s.target > 0]
+        
+        # Update pie chart
+        chart_data = [(s.category, s.current) for s in stats if s.current > 0]
+        self.type_chart.update_chart(chart_data)
         
         self.type_table.setRowCount(len(stats) + 1)  # +1 for total row
         
@@ -162,11 +301,15 @@ class StatsTab(QWidget):
             self.type_table.setItem(total_row, col, item)
     
     def refresh_region_table(self):
-        """Refresh the region stats table."""
+        """Refresh the region stats table and chart."""
         stats = self.calculator.get_stats_by_region()
         
         # Filter out categories with no allocation
         stats = [s for s in stats if s.current > 0 or s.target > 0]
+        
+        # Update pie chart
+        chart_data = [(s.category, s.current) for s in stats if s.current > 0]
+        self.region_chart.update_chart(chart_data)
         
         self.region_table.setRowCount(len(stats) + 1)  # +1 for total row
         

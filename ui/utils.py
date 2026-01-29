@@ -1,23 +1,79 @@
 """Shared UI utilities for Portfolio Tracker."""
 import re
-from PyQt6.QtWidgets import QTableWidgetItem, QTableWidget
+from PyQt6.QtWidgets import QTableWidgetItem, QTableWidget, QApplication
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QColor, QPalette
 
 
 # =============================================================================
-# UI Color Constants
+# Theme Detection
 # =============================================================================
 
-# Alternating row colors
+def is_dark_mode() -> bool:
+    """Detect if the application is using dark mode.
+    
+    Returns:
+        True if dark mode is active, False otherwise
+    """
+    app = QApplication.instance()
+    if app is None:
+        return False
+    
+    palette = app.palette()
+    # Compare window background luminance
+    bg_color = palette.color(QPalette.ColorRole.Window)
+    # Calculate perceived luminance
+    luminance = (0.299 * bg_color.red() + 0.587 * bg_color.green() + 0.114 * bg_color.blue()) / 255
+    return luminance < 0.5
+
+
+# =============================================================================
+# UI Color Functions (Theme-Aware)
+# =============================================================================
+
+def get_row_colors():
+    """Get alternating row colors based on current theme.
+    
+    Returns:
+        Tuple of (even_color, odd_color)
+    """
+    if is_dark_mode():
+        return (QColor(45, 45, 48), QColor(37, 37, 40))
+    else:
+        return (QColor(255, 255, 255), QColor(245, 245, 250))
+
+
+def get_highlight_colors():
+    """Get highlight colors for special columns based on current theme.
+    
+    Returns:
+        Tuple of (even_highlight, odd_highlight)
+    """
+    if is_dark_mode():
+        return (QColor(60, 55, 30), QColor(50, 45, 25))
+    else:
+        return (QColor(255, 248, 220), QColor(250, 243, 210))
+
+
+def get_warning_colors():
+    """Get warning colors based on current theme.
+    
+    Returns:
+        Tuple of (yellow_warning, red_warning)
+    """
+    if is_dark_mode():
+        return (QColor(80, 75, 30), QColor(80, 40, 40))
+    else:
+        return (QColor(255, 255, 200), QColor(255, 200, 200))
+
+
+# Legacy color constants (for backwards compatibility - prefer functions above)
 ROW_COLOR_EVEN = QColor(255, 255, 255)  # White
 ROW_COLOR_ODD = QColor(245, 245, 250)   # Light gray-blue
 
-# Highlight colors for special columns
 HIGHLIGHT_COLOR_EVEN = QColor(255, 248, 220)  # Light yellow for even rows
 HIGHLIGHT_COLOR_ODD = QColor(250, 243, 210)   # Slightly darker yellow for odd rows
 
-# Warning/attention colors
 WARNING_COLOR_YELLOW = QColor(255, 255, 200)  # Light yellow
 WARNING_COLOR_RED = QColor(255, 200, 200)     # Light red
 
@@ -162,7 +218,7 @@ def setup_movable_columns(table: QTableWidget, table_name: str, settings_store) 
 # =============================================================================
 
 def get_alternating_row_color(row: int) -> QColor:
-    """Get the background color for alternating rows.
+    """Get the background color for alternating rows (theme-aware).
     
     Args:
         row: Row index (0-based)
@@ -170,11 +226,12 @@ def get_alternating_row_color(row: int) -> QColor:
     Returns:
         QColor for the row background
     """
-    return ROW_COLOR_EVEN if row % 2 == 0 else ROW_COLOR_ODD
+    even_color, odd_color = get_row_colors()
+    return even_color if row % 2 == 0 else odd_color
 
 
 def get_highlight_row_color(row: int) -> QColor:
-    """Get the highlighted background color for alternating rows.
+    """Get the highlighted background color for alternating rows (theme-aware).
     
     Use for columns that need visual emphasis (e.g., target-related columns).
     
@@ -184,4 +241,5 @@ def get_highlight_row_color(row: int) -> QColor:
     Returns:
         QColor for the highlighted row background
     """
-    return HIGHLIGHT_COLOR_EVEN if row % 2 == 0 else HIGHLIGHT_COLOR_ODD
+    even_highlight, odd_highlight = get_highlight_colors()
+    return even_highlight if row % 2 == 0 else odd_highlight

@@ -32,8 +32,8 @@ class CurrencyTab(QWidget):
         layout.addWidget(title_label)
         
         desc_label = QLabel(
-            "Enter the exchange rate for each currency to EUR. "
-            "Rate meaning: 1 [Currency] = [Rate] EUR"
+            "Enter how many EUR you get for 1 unit of each currency.\n"
+            "Examples: USD rate 0.92 means $1 = €0.92  |  GBP rate 1.17 means £1 = €1.17"
         )
         desc_label.setWordWrap(True)
         desc_label.setStyleSheet("color: #666; margin-bottom: 10px;")
@@ -47,6 +47,13 @@ class CurrencyTab(QWidget):
         self.rates_table.setAlternatingRowColors(True)
         self.rates_table.setColumnCount(2)
         self.rates_table.setHorizontalHeaderLabels(["Currency", "Rate to EUR"])
+        
+        # Set header tooltips
+        self.rates_table.horizontalHeaderItem(0).setToolTip("Currency code (e.g., USD, GBP)")
+        self.rates_table.horizontalHeaderItem(1).setToolTip(
+            "How many EUR you get for 1 unit of this currency\n"
+            "Example: 0.92 for USD means $1 = €0.92"
+        )
         
         header = self.rates_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
@@ -87,8 +94,9 @@ class CurrencyTab(QWidget):
         
         # Info section
         info_label = QLabel(
-            "Note: EUR always has a rate of 1.0 and cannot be modified. "
-            "All portfolio values are converted to EUR for allocation calculations."
+            "Note: EUR is the base currency (rate = 1.0) and cannot be modified. "
+            "All portfolio values are converted to EUR for allocation calculations.\n"
+            "Tip: You can find current exchange rates at xe.com or Google."
         )
         info_label.setWordWrap(True)
         info_label.setStyleSheet("color: #888; font-style: italic; margin-top: 10px;")

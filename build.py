@@ -64,7 +64,8 @@ def build():
         'pydoc',
     ]
     
-    # Build command
+    # Icon path (optional; exe and taskbar icon)
+    icon_path = script_dir / "assets" / "icon.ico"
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--name", "PortfolioTracker",
@@ -82,6 +83,10 @@ def build():
         "--strip",
         "main.py"
     ]
+    if icon_path.exists():
+        cmd.extend(["--icon", str(icon_path)])
+        # Bundle icon so the app can load it at runtime (taskbar, title bar)
+        cmd.extend(["--add-data", f"{icon_path};assets"])
     
     print("Building Portfolio Tracker executable...")
     print(f"Excluding {len(exclude_modules)} unused modules")
@@ -120,6 +125,7 @@ def build_onedir():
         'matplotlib', 'numpy', 'pandas', 'scipy', 'tkinter',
     ]
     
+    icon_path = script_dir / "assets" / "icon.ico"
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--name", "PortfolioTracker",
@@ -134,6 +140,8 @@ def build_onedir():
         "--strip",
         "main.py"
     ]
+    if icon_path.exists():
+        cmd.extend(["--icon", str(icon_path), "--add-data", f"{icon_path};assets"])
     
     print("Building Portfolio Tracker (directory mode)...")
     result = subprocess.run(cmd, cwd=script_dir)

@@ -50,7 +50,7 @@ class CurrencyTab(QWidget):
         
         desc_label = QLabel(
             "Enter how many units of each currency you get for 1 EUR.\n"
-            "Examples: USD rate 1.09 means €1 = $1.09  |  CNH rate 7.69 means €1 = ¥7.69"
+            "Examples: USD rate 1.09 means €1 = $1.09  |  CNY rate 7.69 means €1 = ¥7.69"
         )
         desc_label.setWordWrap(True)
         desc_label.setStyleSheet("color: #666; margin-bottom: 10px;")

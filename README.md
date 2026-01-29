@@ -8,7 +8,7 @@ A simple desktop application to track and visualize the allocation and performan
 - **OCR support** for extracting data from screenshots using Tesseract
 - **Data review** - Edit imported data before confirmation to fix any OCR errors
 - **Multi-currency support**:
-  - Assign currency to each instrument (EUR, USD, GBP, CNH, etc.)
+  - Assign currency to each instrument (EUR, USD, GBP, CNY, etc.)
   - Configure exchange rates in the Currency Exchange tab
   - All allocations calculated in EUR
   - Add custom currencies as needed
@@ -96,7 +96,7 @@ In the Currency Exchange tab:
 - **Add new currencies** using the form at the bottom
 - Changes are auto-saved and immediately reflected in allocations
 
-Default currencies: EUR, USD, GBP, CNH
+Default currencies: EUR, USD, GBP, CNY
 
 ### Viewing Statistics
 

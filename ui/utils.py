@@ -89,7 +89,7 @@ CURRENCY_SYMBOLS = {
     'EUR': '€',
     'USD': '$',
     'GBP': '£',
-    'CNH': '¥',
+    'CNY': '¥',
     'CNY': '¥',
     'JPY': '¥',
     'CHF': 'Fr.',

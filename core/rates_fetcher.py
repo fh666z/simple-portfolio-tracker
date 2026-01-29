@@ -14,7 +14,7 @@ def fetch_rates(currencies: list[str]) -> tuple[Optional[dict[str, float]], Opti
     """Fetch latest EUR-based exchange rates for the given currencies.
 
     Uses Frankfurter API (no API key, free). EUR is the base; rates are
-    "units per 1 EUR". Currencies not supported by the API (e.g. CNH) are
+    "units per 1 EUR". Currencies not supported by the API are
     simply not included in the returned dict.
 
     Args:

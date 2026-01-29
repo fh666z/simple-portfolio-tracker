@@ -101,16 +101,16 @@ class SettingsStore:
     """Store for application settings."""
     
     # Default currencies available in the app
-    DEFAULT_CURRENCIES = ["EUR", "USD", "GBP", "CNH"]
+    DEFAULT_CURRENCIES = ["EUR", "USD", "GBP", "CNY"]
     
     # Default exchange rates (from EUR)
     # Rate meaning: 1 EUR = [rate] [currency]
-    # E.g., 1 EUR = 1.09 USD, 1 EUR = 7.69 CNH
+    # E.g., 1 EUR = 1.09 USD, 1 EUR = 7.69 CNY
     DEFAULT_EXCHANGE_RATES = {
         "EUR": 1.0,
         "USD": 1.09,
         "GBP": 0.85,
-        "CNH": 7.69,
+        "CNY": 7.69,
     }
     
     def __init__(self):

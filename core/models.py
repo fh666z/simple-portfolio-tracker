@@ -41,7 +41,7 @@ class Holding:
     asset_type: AssetType = AssetType.UNASSIGNED
     region: Region = Region.UNASSIGNED
     target_allocation: float = 0.0  # Target allocation percentage (0-1)
-    currency: str = "EUR"  # Currency of the instrument (EUR, USD, GBP, CNH, etc.)
+    currency: str = "EUR"  # Currency of the instrument (EUR, USD, GBP, CNY, etc.)
     
     @property
     def allocation_pct(self) -> float:

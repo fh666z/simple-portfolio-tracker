@@ -73,19 +73,22 @@ class CurrencyTab(QWidget):
         
         self.rates_table = QTableWidget()
         self.rates_table.setAlternatingRowColors(True)
-        self.rates_table.setColumnCount(2)
-        self.rates_table.setHorizontalHeaderLabels(["Currency", "Rate (per 1 EUR)"])
+        self.rates_table.setColumnCount(3)
+        self.rates_table.setHorizontalHeaderLabels(["", "Currency", "Rate (per 1 EUR)"])
         
         # Set header tooltips
-        self.rates_table.horizontalHeaderItem(0).setToolTip("Currency code (e.g., USD, GBP)")
-        self.rates_table.horizontalHeaderItem(1).setToolTip(
+        self.rates_table.horizontalHeaderItem(0).setToolTip("Click to delete this currency")
+        self.rates_table.horizontalHeaderItem(1).setToolTip("Currency code (e.g., USD, GBP)")
+        self.rates_table.horizontalHeaderItem(2).setToolTip(
             "How many units of this currency equal 1 EUR\n"
             "Example: 1.09 for USD means €1 = $1.09"
         )
         
         header = self.rates_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        header.resizeSection(0, 40)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         
         # Enable column reordering with persistence
         setup_movable_columns(self.rates_table, 'currency_rates', self.settings_store)
@@ -142,12 +145,36 @@ class CurrencyTab(QWidget):
         self.rates_table.setRowCount(len(currencies))
         
         for row, currency in enumerate(currencies):
+            # Delete button (empty for EUR)
+            if currency != "EUR":
+                delete_btn = QPushButton("×")
+                delete_btn.setFixedSize(24, 24)
+                delete_btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: transparent;
+                        color: #999;
+                        border: none;
+                        font-size: 16px;
+                        font-weight: bold;
+                    }
+                    QPushButton:hover {
+                        color: #dc3545;
+                        background-color: #fee;
+                        border-radius: 12px;
+                    }
+                """)
+                delete_btn.setToolTip(f"Delete {currency}")
+                delete_btn.clicked.connect(lambda checked, c=currency: self._delete_currency(c))
+                self.rates_table.setCellWidget(row, 0, delete_btn)
+            else:
+                self.rates_table.setCellWidget(row, 0, None)
+            
             # Currency name (read-only)
             item = QTableWidgetItem(currency)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             if currency == "EUR":
                 item.setBackground(Qt.GlobalColor.lightGray)
-            self.rates_table.setItem(row, 0, item)
+            self.rates_table.setItem(row, 1, item)
             
             # Rate (editable, except EUR)
             rate = rates.get(currency, 1.0)
@@ -158,7 +185,7 @@ class CurrencyTab(QWidget):
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 item.setBackground(Qt.GlobalColor.lightGray)
             
-            self.rates_table.setItem(row, 1, item)
+            self.rates_table.setItem(row, 2, item)
         
         self.rates_table.blockSignals(False)
         self._refresh_last_updated_label()
@@ -211,11 +238,11 @@ class CurrencyTab(QWidget):
     
     def on_rate_changed(self, row: int, col: int):
         """Handle rate value change."""
-        if col != 1:  # Only rate column
+        if col != 2:  # Only rate column
             return
         
-        currency_item = self.rates_table.item(row, 0)
-        rate_item = self.rates_table.item(row, 1)
+        currency_item = self.rates_table.item(row, 1)
+        rate_item = self.rates_table.item(row, 2)
         
         if not currency_item or not rate_item:
             return
@@ -283,5 +310,14 @@ class CurrencyTab(QWidget):
         self.new_rate_input.clear()
         
         # Refresh table
+        self.refresh()
+        self.rates_changed.emit()
+
+    def _delete_currency(self, currency: str):
+        """Delete a currency (called from row delete button). EUR is not offered a button."""
+        if currency == "EUR":
+            return
+        if not self.settings_store.remove_currency(currency):
+            return
         self.refresh()
         self.rates_changed.emit()

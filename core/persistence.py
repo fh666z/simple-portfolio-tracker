@@ -171,6 +171,23 @@ class SettingsStore:
         if currency not in currencies:
             currencies.append(currency)
             self.set_currencies(currencies)
+
+    def remove_currency(self, currency: str) -> bool:
+        """Remove a currency from the list and from exchange rates.
+        EUR cannot be removed. Returns True if removed, False if EUR or not found."""
+        if currency == "EUR":
+            return False
+        currencies = self.get_currencies()
+        if currency not in currencies:
+            return False
+        currencies = [c for c in currencies if c != currency]
+        self.set_currencies(currencies)
+        rates = self.get_exchange_rates()
+        if currency in rates:
+            del rates[currency]
+            self.settings['exchange_rates'] = rates
+            self.save()
+        return True
     
     def get_exchange_rates(self) -> dict[str, float]:
         """Get exchange rates dict (currency -> EUR rate)."""

@@ -182,7 +182,22 @@ class SettingsStore:
         rates[currency] = rate
         self.settings['exchange_rates'] = rates
         self.save()
-    
+
+    def update_exchange_rates(self, rates: dict[str, float]) -> None:
+        """Update all exchange rates in one go and save once.
+        Caller should pass the full merged dict (existing rates + new rates)."""
+        self.settings['exchange_rates'] = dict(rates)
+        self.save()
+
+    def get_rates_last_updated(self) -> Optional[str]:
+        """Return the date when rates were last updated from the internet (ISO date), or None."""
+        return self.settings.get('rates_last_updated')
+
+    def set_rates_last_updated(self, date_str: str) -> None:
+        """Store the date when rates were last updated from the internet (e.g. from API)."""
+        self.settings['rates_last_updated'] = date_str
+        self.save()
+
     def get_exchange_rate(self, currency: str) -> float:
         """Get exchange rate for a currency (units per 1 EUR). Returns 1.0 for EUR or unknown currencies."""
         if currency == 'EUR':

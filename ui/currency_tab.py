@@ -3,11 +3,26 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QHeaderView, QLabel, QPushButton, QLineEdit, QMessageBox, QGroupBox
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QThread
 from PyQt6.QtGui import QDoubleValidator
 
 from core.persistence import SettingsStore
+from core.rates_fetcher import fetch_rates
 from .utils import setup_movable_columns, ALIGN_RIGHT_CENTER
+
+
+class RatesFetchThread(QThread):
+    """Worker thread that fetches exchange rates from the internet."""
+    # Emits (rates_dict, date_str, error_msg). On success error_msg is ""; on failure rates and date are empty.
+    fetch_finished = pyqtSignal(dict, str, str)
+
+    def __init__(self, currencies: list[str], parent=None):
+        super().__init__(parent)
+        self.currencies = currencies
+
+    def run(self):
+        rates, date_str, error = fetch_rates(self.currencies)
+        self.fetch_finished.emit(rates or {}, date_str or "", error or "")
 
 
 class CurrencyTab(QWidget):
@@ -19,8 +34,10 @@ class CurrencyTab(QWidget):
     def __init__(self, settings_store: SettingsStore, parent=None):
         super().__init__(parent)
         self.settings_store = settings_store
+        self._fetch_thread = None
         self.setup_ui()
         self.refresh()
+        self._refresh_last_updated_label()
     
     def setup_ui(self):
         """Set up the UI components."""
@@ -42,6 +59,17 @@ class CurrencyTab(QWidget):
         # Exchange rates table
         rates_group = QGroupBox("Exchange Rates")
         rates_layout = QVBoxLayout(rates_group)
+        
+        # Update from internet row
+        update_row = QHBoxLayout()
+        self.update_rates_btn = QPushButton("Update rates from internet")
+        self.update_rates_btn.clicked.connect(self.on_update_rates_from_internet)
+        update_row.addWidget(self.update_rates_btn)
+        self.last_updated_label = QLabel("")
+        self.last_updated_label.setStyleSheet("color: #666;")
+        update_row.addWidget(self.last_updated_label)
+        update_row.addStretch()
+        rates_layout.addLayout(update_row)
         
         self.rates_table = QTableWidget()
         self.rates_table.setAlternatingRowColors(True)
@@ -133,6 +161,53 @@ class CurrencyTab(QWidget):
             self.rates_table.setItem(row, 1, item)
         
         self.rates_table.blockSignals(False)
+        self._refresh_last_updated_label()
+
+    def _refresh_last_updated_label(self):
+        """Update the 'Last updated' label from settings."""
+        date_str = self.settings_store.get_rates_last_updated()
+        if date_str:
+            self.last_updated_label.setText(f"Last updated: {date_str}")
+        else:
+            self.last_updated_label.setText("")
+
+    def on_update_rates_from_internet(self):
+        """Start fetching rates from the internet in a background thread."""
+        if self._fetch_thread is not None and self._fetch_thread.isRunning():
+            return
+        currencies = self.settings_store.get_currencies()
+        self.update_rates_btn.setEnabled(False)
+        self.update_rates_btn.setText("Updating…")
+        self._fetch_thread = RatesFetchThread(currencies, self)
+        self._fetch_thread.fetch_finished.connect(self._on_fetch_finished)
+        self._fetch_thread.finished.connect(self._on_fetch_thread_finished)
+        self._fetch_thread.start()
+
+    def _on_fetch_thread_finished(self):
+        """Re-enable the update button after the thread ends."""
+        self.update_rates_btn.setEnabled(True)
+        self.update_rates_btn.setText("Update rates from internet")
+
+    def _on_fetch_finished(self, rates: dict, date_str: str, error_msg: str):
+        """Handle fetch result: apply rates or show error."""
+        if error_msg:
+            QMessageBox.warning(
+                self,
+                "Could not update rates",
+                f"{error_msg}\n\nYour existing rates were not changed.",
+            )
+            return
+        if not rates:
+            return
+        current = dict(self.settings_store.get_exchange_rates())
+        for currency, rate in rates.items():
+            current[currency] = rate
+        self.settings_store.update_exchange_rates(current)
+        if date_str:
+            self.settings_store.set_rates_last_updated(date_str)
+        self._refresh_last_updated_label()
+        self.refresh()
+        self.rates_changed.emit()
     
     def on_rate_changed(self, row: int, col: int):
         """Handle rate value change."""

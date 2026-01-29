@@ -1,12 +1,13 @@
 """Statistics view for Portfolio Tracker."""
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
-    QHeaderView, QLabel, QGroupBox, QSplitter
+    QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem,
+    QHeaderView, QGroupBox, QSplitter
 )
 from PyQt6.QtCore import Qt
 
 from core.calculator import PortfolioCalculator
 from core.persistence import SettingsStore
+from .utils import NumericTableItem, setup_movable_columns, ALIGN_RIGHT_CENTER
 
 
 class StatsTab(QWidget):
@@ -70,12 +71,8 @@ class StatsTab(QWidget):
         for i in range(1, len(columns)):
             header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
         
-        # Enable column reordering
-        header.setSectionsMovable(True)
-        header.sectionMoved.connect(lambda l, o, n, tn=table_name, t=table: self.on_column_moved(tn, t))
-        
-        # Restore saved column order
-        self.restore_column_order(table_name, table)
+        # Enable column reordering with persistence
+        setup_movable_columns(table, table_name, self.settings_store)
         
         return table
     
@@ -92,33 +89,12 @@ class StatsTab(QWidget):
         for i in range(2, len(columns)):
             header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
         
-        # Enable column reordering
-        header.setSectionsMovable(True)
-        header.sectionMoved.connect(lambda l, o, n: self.on_column_moved('stats_detailed', table))
+        # Enable column reordering with persistence
+        setup_movable_columns(table, 'stats_detailed', self.settings_store)
         
         table.setSortingEnabled(True)
         
-        # Restore saved column order
-        self.restore_column_order('stats_detailed', table)
-        
         return table
-    
-    def on_column_moved(self, table_name: str, table: QTableWidget):
-        """Handle column reorder - save new order."""
-        header = table.horizontalHeader()
-        order = [header.logicalIndex(i) for i in range(header.count())]
-        self.settings_store.set_column_order(table_name, order)
-    
-    def restore_column_order(self, table_name: str, table: QTableWidget):
-        """Restore saved column order for a table."""
-        order = self.settings_store.get_column_order(table_name)
-        if order:
-            header = table.horizontalHeader()
-            for visual_index, logical_index in enumerate(order):
-                if logical_index < header.count():
-                    current_visual = header.visualIndex(logical_index)
-                    if current_visual != visual_index:
-                        header.moveSection(current_visual, visual_index)
     
     def refresh(self):
         """Refresh all stats tables."""
@@ -145,24 +121,24 @@ class StatsTab(QWidget):
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.type_table.setItem(row, 0, item)
             
-            # Current %
-            item = QTableWidgetItem(f"{stat.current * 100:.2f}%")
+            # Current % - numeric sorting
+            item = NumericTableItem(f"{stat.current * 100:.2f}%", stat.current)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setTextAlignment(ALIGN_RIGHT_CENTER)
             self.type_table.setItem(row, 1, item)
             total_current += stat.current
             
-            # Current All %
-            item = QTableWidgetItem(f"{stat.current_all * 100:.2f}%")
+            # Current All % - numeric sorting
+            item = NumericTableItem(f"{stat.current_all * 100:.2f}%", stat.current_all)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setTextAlignment(ALIGN_RIGHT_CENTER)
             self.type_table.setItem(row, 2, item)
             total_current_all += stat.current_all
             
-            # Target %
-            item = QTableWidgetItem(f"{stat.target * 100:.2f}%")
+            # Target % - numeric sorting
+            item = NumericTableItem(f"{stat.target * 100:.2f}%", stat.target)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setTextAlignment(ALIGN_RIGHT_CENTER)
             self.type_table.setItem(row, 3, item)
             total_target += stat.target
         
@@ -177,9 +153,9 @@ class StatsTab(QWidget):
         self.type_table.setItem(total_row, 0, item)
         
         for col, value in enumerate([total_current, total_current_all, total_target], 1):
-            item = QTableWidgetItem(f"{value * 100:.2f}%")
+            item = NumericTableItem(f"{value * 100:.2f}%", value)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setTextAlignment(ALIGN_RIGHT_CENTER)
             item.setFont(font)
             self.type_table.setItem(total_row, col, item)
     
@@ -202,24 +178,24 @@ class StatsTab(QWidget):
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.region_table.setItem(row, 0, item)
             
-            # Current %
-            item = QTableWidgetItem(f"{stat.current * 100:.2f}%")
+            # Current % - numeric sorting
+            item = NumericTableItem(f"{stat.current * 100:.2f}%", stat.current)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setTextAlignment(ALIGN_RIGHT_CENTER)
             self.region_table.setItem(row, 1, item)
             total_current += stat.current
             
-            # Current All %
-            item = QTableWidgetItem(f"{stat.current_all * 100:.2f}%")
+            # Current All % - numeric sorting
+            item = NumericTableItem(f"{stat.current_all * 100:.2f}%", stat.current_all)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setTextAlignment(ALIGN_RIGHT_CENTER)
             self.region_table.setItem(row, 2, item)
             total_current_all += stat.current_all
             
-            # Target %
-            item = QTableWidgetItem(f"{stat.target * 100:.2f}%")
+            # Target % - numeric sorting
+            item = NumericTableItem(f"{stat.target * 100:.2f}%", stat.target)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setTextAlignment(ALIGN_RIGHT_CENTER)
             self.region_table.setItem(row, 3, item)
             total_target += stat.target
         
@@ -234,9 +210,9 @@ class StatsTab(QWidget):
         self.region_table.setItem(total_row, 0, item)
         
         for col, value in enumerate([total_current, total_current_all, total_target], 1):
-            item = QTableWidgetItem(f"{value * 100:.2f}%")
+            item = NumericTableItem(f"{value * 100:.2f}%", value)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setTextAlignment(ALIGN_RIGHT_CENTER)
             item.setFont(font)
             self.region_table.setItem(total_row, col, item)
     
@@ -257,20 +233,20 @@ class StatsTab(QWidget):
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.detailed_table.setItem(row, 1, item)
             
-            # Current %
-            item = QTableWidgetItem(f"{stat.current * 100:.2f}%")
+            # Current % - numeric sorting
+            item = NumericTableItem(f"{stat.current * 100:.2f}%", stat.current)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setTextAlignment(ALIGN_RIGHT_CENTER)
             self.detailed_table.setItem(row, 2, item)
             
-            # Current All %
-            item = QTableWidgetItem(f"{stat.current_all * 100:.2f}%")
+            # Current All % - numeric sorting
+            item = NumericTableItem(f"{stat.current_all * 100:.2f}%", stat.current_all)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setTextAlignment(ALIGN_RIGHT_CENTER)
             self.detailed_table.setItem(row, 3, item)
             
-            # Target %
-            item = QTableWidgetItem(f"{stat.target * 100:.2f}%")
+            # Target % - numeric sorting
+            item = NumericTableItem(f"{stat.target * 100:.2f}%", stat.target)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setTextAlignment(ALIGN_RIGHT_CENTER)
             self.detailed_table.setItem(row, 4, item)

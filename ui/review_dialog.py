@@ -1,13 +1,16 @@
 """Data review dialog for Portfolio Tracker."""
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
-    QHeaderView, QLabel, QPushButton, QMessageBox, QDoubleSpinBox,
-    QLineEdit, QWidget
+    QHeaderView, QLabel, QPushButton, QMessageBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor
 
 from core.models import Holding
+from .utils import (
+    parse_numeric_text, ALIGN_RIGHT_CENTER,
+    WARNING_COLOR_YELLOW, WARNING_COLOR_RED
+)
 
 
 class ReviewDialog(QDialog):
@@ -156,28 +159,26 @@ class ReviewDialog(QDialog):
     def set_numeric_cell(self, row: int, col: int, value: float):
         """Set a numeric cell value."""
         item = QTableWidgetItem(f"{value:,.2f}")
-        item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        item.setTextAlignment(ALIGN_RIGHT_CENTER)
         self.table.setItem(row, col, item)
     
     def check_row_issues(self, row: int, holding: Holding):
         """Check for potential issues in a row and highlight if needed."""
-        warning_color = QColor(255, 255, 200)  # Light yellow
-        
         # Check for zero/missing market value
         if holding.market_value == 0:
-            self.highlight_cell(row, 5, warning_color)
+            self.highlight_cell(row, 5, WARNING_COLOR_YELLOW)
         
         # Check for zero position
         if holding.position == 0:
-            self.highlight_cell(row, 1, warning_color)
+            self.highlight_cell(row, 1, WARNING_COLOR_YELLOW)
         
         # Check for suspicious values (negative position, etc.)
         if holding.position < 0:
-            self.highlight_cell(row, 1, QColor(255, 200, 200))  # Light red
+            self.highlight_cell(row, 1, WARNING_COLOR_RED)
         
         # Check for missing cost basis when market value exists
         if holding.market_value > 0 and holding.cost_basis == 0:
-            self.highlight_cell(row, 4, warning_color)
+            self.highlight_cell(row, 4, WARNING_COLOR_YELLOW)
     
     def highlight_cell(self, row: int, col: int, color: QColor):
         """Highlight a cell with the given color."""
@@ -218,15 +219,7 @@ class ReviewDialog(QDialog):
         item = self.table.item(row, col)
         if item is None:
             return 0.0
-        
-        text = item.text().strip()
-        # Remove currency symbols and commas
-        text = text.replace('€', '').replace('$', '').replace(',', '').strip()
-        
-        try:
-            return float(text)
-        except ValueError:
-            return 0.0
+        return parse_numeric_text(item.text())
     
     def on_confirm(self):
         """Handle confirm button click."""

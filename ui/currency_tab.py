@@ -7,6 +7,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QDoubleValidator
 
 from core.persistence import SettingsStore
+from .utils import setup_movable_columns, ALIGN_RIGHT_CENTER
 
 
 class CurrencyTab(QWidget):
@@ -50,14 +51,10 @@ class CurrencyTab(QWidget):
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         
-        # Enable column reordering
-        header.setSectionsMovable(True)
-        header.sectionMoved.connect(self.on_column_moved)
+        # Enable column reordering with persistence
+        setup_movable_columns(self.rates_table, 'currency_rates', self.settings_store)
         
         self.rates_table.cellChanged.connect(self.on_rate_changed)
-        
-        # Restore saved column order
-        self.restore_column_order()
         
         rates_layout.addWidget(self.rates_table)
         layout.addWidget(rates_group)
@@ -98,23 +95,6 @@ class CurrencyTab(QWidget):
         
         layout.addStretch()
     
-    def on_column_moved(self, logical_index: int, old_visual: int, new_visual: int):
-        """Handle column reorder - save new order."""
-        header = self.rates_table.horizontalHeader()
-        order = [header.logicalIndex(i) for i in range(header.count())]
-        self.settings_store.set_column_order('currency_rates', order)
-    
-    def restore_column_order(self):
-        """Restore saved column order."""
-        order = self.settings_store.get_column_order('currency_rates')
-        if order:
-            header = self.rates_table.horizontalHeader()
-            for visual_index, logical_index in enumerate(order):
-                if logical_index < header.count():
-                    current_visual = header.visualIndex(logical_index)
-                    if current_visual != visual_index:
-                        header.moveSection(current_visual, visual_index)
-    
     def refresh(self):
         """Refresh the exchange rates table."""
         self.rates_table.blockSignals(True)
@@ -135,7 +115,7 @@ class CurrencyTab(QWidget):
             # Rate (editable, except EUR)
             rate = rates.get(currency, 1.0)
             item = QTableWidgetItem(f"{rate:.6f}")
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setTextAlignment(ALIGN_RIGHT_CENTER)
             
             if currency == "EUR":
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)

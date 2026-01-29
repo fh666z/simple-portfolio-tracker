@@ -4,10 +4,15 @@ from PyQt6.QtWidgets import (
     QHeaderView, QLabel, QLineEdit, QFrame
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QDoubleValidator, QColor, QBrush
+from PyQt6.QtGui import QDoubleValidator, QBrush
 
 from core.calculator import PortfolioCalculator
 from core.persistence import SettingsStore
+from .utils import (
+    NumericTableItem, get_currency_symbol, parse_numeric_text,
+    get_alternating_row_color, get_highlight_row_color,
+    setup_movable_columns, ALIGN_RIGHT_CENTER
+)
 
 
 class PortfolioTab(QWidget):
@@ -25,17 +30,13 @@ class PortfolioTab(QWidget):
     COL_COST_BASIS = 5
     COL_ALLOCATION = 6
     COL_TARGET = 7
-    COL_DIFF_TARGET_PCT = 8  # Renamed: Diff w/ Target, %
-    COL_DIFF_IN_CASH = 9     # New: Diff in Cash
-    COL_DIFF_IN_SHARES = 10  # New: Diff in Shares
+    COL_DIFF_TARGET_PCT = 8  # Diff w/ Target, %
+    COL_DIFF_IN_CASH = 9     # Diff in Cash
+    COL_DIFF_IN_SHARES = 10  # Diff in Shares
     COL_UNREALIZED_PNL = 11
     
-    # Colors for alternating rows
-    ROW_COLOR_EVEN = QColor(255, 255, 255)  # White
-    ROW_COLOR_ODD = QColor(245, 245, 250)   # Light gray-blue
-    
-    # Highlight color for target-related columns
-    TARGET_HIGHLIGHT_COLOR = QColor(255, 250, 230)  # Light yellow/cream
+    # Columns that should be highlighted (target-related)
+    HIGHLIGHT_COLUMNS = {COL_DIFF_TARGET_PCT, COL_DIFF_IN_CASH, COL_DIFF_IN_SHARES}
     
     def __init__(self, calculator: PortfolioCalculator, settings_store: SettingsStore, parent=None):
         super().__init__(parent)
@@ -57,7 +58,7 @@ class PortfolioTab(QWidget):
         summary_frame = QFrame()
         summary_frame.setFrameShape(QFrame.Shape.StyledPanel)
         summary_layout = QHBoxLayout(summary_frame)
-        
+                        
         # Total Invested (read-only) - in EUR
         summary_layout.addWidget(QLabel("Total Invested (EUR):"))
         self.total_invested_label = QLabel("€0.00")
@@ -67,7 +68,7 @@ class PortfolioTab(QWidget):
         summary_layout.addSpacing(30)
         
         # Free Cash (editable)
-        summary_layout.addWidget(QLabel("Free Cash:"))
+        summary_layout.addWidget(QLabel("Free Cash (EUR):"))
         self.free_cash_input = QLineEdit("0.00")
         self.free_cash_input.setValidator(QDoubleValidator(0, 999999999, 2))
         self.free_cash_input.setMaximumWidth(120)
@@ -78,7 +79,7 @@ class PortfolioTab(QWidget):
         summary_layout.addSpacing(30)
         
         # Total (read-only)
-        summary_layout.addWidget(QLabel("Total:"))
+        summary_layout.addWidget(QLabel("Total Cash(EUR):"))
         self.total_label = QLabel("€0.00")
         self.total_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #2e7d32;")
         summary_layout.addWidget(self.total_label)
@@ -91,7 +92,7 @@ class PortfolioTab(QWidget):
         """Set up the holdings table."""
         columns = [
             "Instrument", "Position", "Last Price", "Market Value",
-            "Value (EUR)", "Cost Basis", "Allocation %",
+            "Value in (EUR)", "Cost Basis", "Allocation %",
             "Target %", "Diff w/ Target, %", "Diff in Cash", "Diff in Shares",
             "Unrealized P&L"
         ]
@@ -105,9 +106,8 @@ class PortfolioTab(QWidget):
         for i in range(1, len(columns)):
             header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
         
-        # Enable column reordering via drag-and-drop
-        header.setSectionsMovable(True)
-        header.sectionMoved.connect(self.on_column_moved)
+        # Enable column reordering with persistence
+        setup_movable_columns(self.table, 'portfolio', self.settings_store)
         
         # Enable sorting
         self.table.setSortingEnabled(True)
@@ -117,41 +117,14 @@ class PortfolioTab(QWidget):
         
         # Connect cell change signal
         self.table.cellChanged.connect(self.on_cell_changed)
-        
-        # Restore saved column order
-        self.restore_column_order()
     
-    def on_column_moved(self, logical_index: int, old_visual: int, new_visual: int):
-        """Handle column reorder - save new order."""
-        header = self.table.horizontalHeader()
-        order = [header.logicalIndex(i) for i in range(header.count())]
-        self.settings_store.set_column_order('portfolio', order)
-    
-    def restore_column_order(self):
-        """Restore saved column order."""
-        order = self.settings_store.get_column_order('portfolio')
-        if order:
-            header = self.table.horizontalHeader()
-            for visual_index, logical_index in enumerate(order):
-                current_visual = header.visualIndex(logical_index)
-                if current_visual != visual_index:
-                    header.moveSection(current_visual, visual_index)
-    
-    def get_row_background(self, row: int, col: int) -> QColor:
+    def get_row_background(self, row: int, col: int):
         """Get background color for a cell based on row and column."""
         # Target-related columns get highlight color
-        if col in (self.COL_DIFF_TARGET_PCT, self.COL_DIFF_IN_CASH, self.COL_DIFF_IN_SHARES):
-            # Blend highlight with alternating color
-            if row % 2 == 0:
-                return QColor(255, 248, 220)  # Light yellow for even rows
-            else:
-                return QColor(250, 243, 210)  # Slightly darker yellow for odd rows
-        
+        if col in self.HIGHLIGHT_COLUMNS:
+            return get_highlight_row_color(row)
         # Regular alternating colors
-        if row % 2 == 0:
-            return self.ROW_COLOR_EVEN
-        else:
-            return self.ROW_COLOR_ODD
+        return get_alternating_row_color(row)
     
     def refresh(self):
         """Refresh the table with current portfolio data."""
@@ -170,7 +143,7 @@ class PortfolioTab(QWidget):
         
         for row, holding in enumerate(portfolio.holdings):
             alloc = alloc_map.get(holding.instrument)
-            currency_symbol = self.get_currency_symbol(holding.currency)
+            currency_symbol = get_currency_symbol(holding.currency)
             
             # Calculate diff values
             diff_pct = alloc.diff_with_target if alloc else 0
@@ -195,58 +168,58 @@ class PortfolioTab(QWidget):
             item.setBackground(QBrush(self.get_row_background(row, self.COL_INSTRUMENT)))
             self.table.setItem(row, self.COL_INSTRUMENT, item)
             
-            # Position (editable)
-            item = QTableWidgetItem(f"{holding.position:.2f}")
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            # Position (editable) - numeric sorting
+            item = NumericTableItem(f"{holding.position:.2f}", holding.position)
+            item.setTextAlignment(ALIGN_RIGHT_CENTER)
             item.setBackground(QBrush(self.get_row_background(row, self.COL_POSITION)))
             self.table.setItem(row, self.COL_POSITION, item)
             
-            # Last Price (editable) - in instrument currency
-            item = QTableWidgetItem(f"{holding.last_price:.2f}")
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            # Last Price (editable) - numeric sorting
+            item = NumericTableItem(f"{holding.last_price:.2f}", holding.last_price)
+            item.setTextAlignment(ALIGN_RIGHT_CENTER)
             item.setBackground(QBrush(self.get_row_background(row, self.COL_LAST_PRICE)))
             self.table.setItem(row, self.COL_LAST_PRICE, item)
             
-            # Market Value (read-only) - in instrument currency
-            item = QTableWidgetItem(f"{currency_symbol}{holding.market_value:,.2f}")
+            # Market Value (read-only) - numeric sorting
+            item = NumericTableItem(f"{currency_symbol}{holding.market_value:,.2f}", holding.market_value)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setTextAlignment(ALIGN_RIGHT_CENTER)
             item.setBackground(QBrush(self.get_row_background(row, self.COL_MARKET_VALUE)))
             self.table.setItem(row, self.COL_MARKET_VALUE, item)
             
-            # Market Value (EUR) - converted
+            # Market Value (EUR) - numeric sorting
             market_value_eur = self.settings_store.convert_to_eur(holding.market_value, holding.currency)
-            item = QTableWidgetItem(f"€{market_value_eur:,.2f}")
+            item = NumericTableItem(f"€{market_value_eur:,.2f}", market_value_eur)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setTextAlignment(ALIGN_RIGHT_CENTER)
             item.setBackground(QBrush(self.get_row_background(row, self.COL_MARKET_VALUE_EUR)))
             self.table.setItem(row, self.COL_MARKET_VALUE_EUR, item)
             
-            # Cost Basis (editable)
-            item = QTableWidgetItem(f"{holding.cost_basis:.2f}")
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            # Cost Basis (editable) - numeric sorting
+            item = NumericTableItem(f"{currency_symbol}{holding.cost_basis:,.2f}", holding.cost_basis)
+            item.setTextAlignment(ALIGN_RIGHT_CENTER)
             item.setBackground(QBrush(self.get_row_background(row, self.COL_COST_BASIS)))
             self.table.setItem(row, self.COL_COST_BASIS, item)
             
-            # Allocation % (read-only, calculated)
+            # Allocation % (read-only, calculated) - numeric sorting
             alloc_pct = alloc.allocation_with_cash if alloc else 0
-            item = QTableWidgetItem(f"{alloc_pct * 100:.2f}%")
+            item = NumericTableItem(f"{alloc_pct * 100:.2f}%", alloc_pct)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setTextAlignment(ALIGN_RIGHT_CENTER)
             item.setBackground(QBrush(self.get_row_background(row, self.COL_ALLOCATION)))
             self.table.setItem(row, self.COL_ALLOCATION, item)
             
-            # Target % (editable)
-            item = QTableWidgetItem(f"{holding.target_allocation * 100:.1f}")
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            # Target % (editable) - numeric sorting
+            item = NumericTableItem(f"{holding.target_allocation * 100:.1f}", holding.target_allocation)
+            item.setTextAlignment(ALIGN_RIGHT_CENTER)
             item.setBackground(QBrush(self.get_row_background(row, self.COL_TARGET)))
             self.table.setItem(row, self.COL_TARGET, item)
             
-            # Diff w/ Target, % (read-only, calculated) - HIGHLIGHTED
+            # Diff w/ Target, % (read-only, calculated) - HIGHLIGHTED, numeric sorting
             diff_text = f"{diff_pct * 100:+.2f}%"
-            item = QTableWidgetItem(diff_text)
+            item = NumericTableItem(diff_text, diff_pct)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setTextAlignment(ALIGN_RIGHT_CENTER)
             item.setBackground(QBrush(self.get_row_background(row, self.COL_DIFF_TARGET_PCT)))
             # Color text based on positive/negative
             if diff_pct > 0.001:
@@ -255,10 +228,10 @@ class PortfolioTab(QWidget):
                 item.setForeground(Qt.GlobalColor.darkRed)
             self.table.setItem(row, self.COL_DIFF_TARGET_PCT, item)
             
-            # Diff in Cash (read-only, calculated) - HIGHLIGHTED
-            item = QTableWidgetItem(f"{currency_symbol}{diff_in_cash:+,.2f}")
+            # Diff in Cash (read-only, calculated) - HIGHLIGHTED, numeric sorting
+            item = NumericTableItem(f"{currency_symbol}{diff_in_cash:+,.2f}", diff_in_cash)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setTextAlignment(ALIGN_RIGHT_CENTER)
             item.setBackground(QBrush(self.get_row_background(row, self.COL_DIFF_IN_CASH)))
             if diff_in_cash > 0.01:
                 item.setForeground(Qt.GlobalColor.darkGreen)
@@ -266,10 +239,10 @@ class PortfolioTab(QWidget):
                 item.setForeground(Qt.GlobalColor.darkRed)
             self.table.setItem(row, self.COL_DIFF_IN_CASH, item)
             
-            # Diff in Shares (read-only, calculated) - HIGHLIGHTED
-            item = QTableWidgetItem(f"{diff_in_shares:+,.2f}")
+            # Diff in Shares (read-only, calculated) - HIGHLIGHTED, numeric sorting
+            item = NumericTableItem(f"{diff_in_shares:+,.2f}", diff_in_shares)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item.setTextAlignment(ALIGN_RIGHT_CENTER)
             item.setBackground(QBrush(self.get_row_background(row, self.COL_DIFF_IN_SHARES)))
             if diff_in_shares > 0.01:
                 item.setForeground(Qt.GlobalColor.darkGreen)
@@ -277,9 +250,9 @@ class PortfolioTab(QWidget):
                 item.setForeground(Qt.GlobalColor.darkRed)
             self.table.setItem(row, self.COL_DIFF_IN_SHARES, item)
             
-            # Unrealized P&L (editable)
-            item = QTableWidgetItem(f"{holding.unrealized_pnl:.2f}")
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            # Unrealized P&L (editable) - numeric sorting
+            item = NumericTableItem(f"{holding.unrealized_pnl:.2f}", holding.unrealized_pnl)
+            item.setTextAlignment(ALIGN_RIGHT_CENTER)
             item.setBackground(QBrush(self.get_row_background(row, self.COL_UNREALIZED_PNL)))
             if holding.unrealized_pnl > 0:
                 item.setForeground(Qt.GlobalColor.darkGreen)
@@ -291,19 +264,6 @@ class PortfolioTab(QWidget):
         self.update_summary()
         
         self.table.blockSignals(False)
-    
-    def get_currency_symbol(self, currency: str) -> str:
-        """Get the symbol for a currency."""
-        symbols = {
-            'EUR': '€',
-            'USD': '$',
-            'GBP': '£',
-            'CNH': '¥',
-            'CNY': '¥',
-            'JPY': '¥',
-            'CHF': 'Fr.',
-        }
-        return symbols.get(currency, f"{currency} ")
     
     def update_summary(self):
         """Update the summary labels."""
@@ -370,8 +330,8 @@ class PortfolioTab(QWidget):
                 self.portfolio_changed.emit()
             
             elif col == self.COL_COST_BASIS:
-                # Update cost basis
-                value = float(text.replace(',', ''))
+                # Update cost basis - strip currency symbol and commas
+                value = parse_numeric_text(text)
                 holding.cost_basis = value
                 self.refresh()
                 self.portfolio_changed.emit()

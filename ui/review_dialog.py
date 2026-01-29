@@ -64,6 +64,7 @@ class ReviewDialog(QDialog):
         
         # Table
         self.table = QTableWidget()
+        self.table.setAlternatingRowColors(True)
         self.setup_table()
         layout.addWidget(self.table)
         

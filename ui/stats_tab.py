@@ -62,6 +62,7 @@ class StatsTab(QWidget):
     def create_stats_table(self, table_name: str) -> QTableWidget:
         """Create a basic stats table."""
         table = QTableWidget()
+        table.setAlternatingRowColors(True)
         columns = ["Category", "Current %", "Current All %", "Target %"]
         table.setColumnCount(len(columns))
         table.setHorizontalHeaderLabels(columns)
@@ -79,6 +80,7 @@ class StatsTab(QWidget):
     def create_detailed_table(self) -> QTableWidget:
         """Create the detailed stats table."""
         table = QTableWidget()
+        table.setAlternatingRowColors(True)
         columns = ["Type", "Region", "Current %", "Current All %", "Target %"]
         table.setColumnCount(len(columns))
         table.setHorizontalHeaderLabels(columns)
@@ -220,7 +222,11 @@ class StatsTab(QWidget):
         """Refresh the detailed stats table."""
         stats = self.calculator.get_stats_detailed()
         
-        self.detailed_table.setRowCount(len(stats))
+        self.detailed_table.setRowCount(len(stats) + 1)  # +1 for total row
+        
+        total_current = 0
+        total_current_all = 0
+        total_target = 0
         
         for row, stat in enumerate(stats):
             # Type
@@ -238,15 +244,40 @@ class StatsTab(QWidget):
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             item.setTextAlignment(ALIGN_RIGHT_CENTER)
             self.detailed_table.setItem(row, 2, item)
+            total_current += stat.current
             
             # Current All % - numeric sorting
             item = NumericTableItem(f"{stat.current_all * 100:.2f}%", stat.current_all)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             item.setTextAlignment(ALIGN_RIGHT_CENTER)
             self.detailed_table.setItem(row, 3, item)
+            total_current_all += stat.current_all
             
             # Target % - numeric sorting
             item = NumericTableItem(f"{stat.target * 100:.2f}%", stat.target)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             item.setTextAlignment(ALIGN_RIGHT_CENTER)
             self.detailed_table.setItem(row, 4, item)
+            total_target += stat.target
+        
+        # Total row
+        total_row = len(stats)
+        
+        item = QTableWidgetItem("TOTAL")
+        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        font = item.font()
+        font.setBold(True)
+        item.setFont(font)
+        self.detailed_table.setItem(total_row, 0, item)
+        
+        # Empty region cell for total row
+        item = QTableWidgetItem("")
+        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        self.detailed_table.setItem(total_row, 1, item)
+        
+        for col, value in enumerate([total_current, total_current_all, total_target], 2):
+            item = NumericTableItem(f"{value * 100:.2f}%", value)
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            item.setTextAlignment(ALIGN_RIGHT_CENTER)
+            item.setFont(font)
+            self.detailed_table.setItem(total_row, col, item)

@@ -44,6 +44,7 @@ class CurrencyTab(QWidget):
         rates_layout = QVBoxLayout(rates_group)
         
         self.rates_table = QTableWidget()
+        self.rates_table.setAlternatingRowColors(True)
         self.rates_table.setColumnCount(2)
         self.rates_table.setHorizontalHeaderLabels(["Currency", "Rate to EUR"])
         

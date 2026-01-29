@@ -34,6 +34,7 @@ class InstrumentConfigTab(QWidget):
         
         # Configuration table
         self.table = QTableWidget()
+        self.table.setAlternatingRowColors(True)
         self.setup_table()
         layout.addWidget(self.table)
     

@@ -6,16 +6,18 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QTabWidget, QPushButton,
     QHBoxLayout, QMessageBox, QStatusBar, QFileDialog, QInputDialog,
-    QProgressDialog, QApplication, QMenu
+    QProgressDialog, QApplication, QMenu, QDialog, QDialogButtonBox,
+    QTextBrowser, QLabel
 )
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QShortcut, QKeySequence, QAction
+from PyQt6.QtCore import Qt, QTimer, QUrl
+from PyQt6.QtGui import QShortcut, QKeySequence, QAction, QDesktopServices
 
 from core.models import Portfolio, Holding
 from core.calculator import PortfolioCalculator
 from core.data_parser import parse_file
 from core.ocr_parser import parse_image_file, check_tesseract
-from core.persistence import MappingsStore, SettingsStore, PortfolioStore
+from core.persistence import MappingsStore, SettingsStore, PortfolioStore, get_data_dir
+from core import __version__
 
 from .portfolio_tab import PortfolioTab
 from .instrument_config_tab import InstrumentConfigTab
@@ -23,6 +25,48 @@ from .stats_tab import StatsTab
 from .currency_tab import CurrencyTab
 from .import_dialog import ImportDialog
 from .review_dialog import ReviewDialog
+
+
+_USER_GUIDE_TEXT = """Portfolio Tracker – User Guide
+
+Menu & shortcuts
+• File: Import Portfolio Data, Load Data, Export (JSON / CSV / Excel), Reset Data, Exit.
+• Edit: Find (focus search in Portfolio tab).
+• Help: User Guide, Keyboard Shortcuts, Data Storage, About.
+• Shortcuts: Ctrl+N Import, Ctrl+O Load, Ctrl+S Export, Ctrl+F Find, Ctrl+Q Exit.
+
+Import & data
+• Import from images (PNG, JPG – OCR via Tesseract) or spreadsheets (XLSX, XLS, CSV).
+• Drag & drop or Browse in the import dialog. Review dialog lets you edit extracted data and fix OCR errors.
+• Load Data: Open a previously exported JSON file (restores portfolio, currencies, rates, mappings).
+• Reset Data: Clear all holdings and free cash; requires typing "DELETE" to confirm.
+
+Export
+• Export to JSON (Ctrl+S): Full snapshot (portfolio + settings + mappings). Default filename includes date.
+• Export to CSV or Excel: Holdings table for spreadsheets or formatted XLSX.
+
+Portfolio tab
+• Holdings table: Instrument, Position, Last Price, Market Value, Value (EUR), Cost Basis, Allocation %, Target %, Diff, Unrealized P&L.
+• Editable: Position, Last Price, Cost Basis, Target %, Unrealized P&L; Type and Region via dropdowns.
+• Delete: × button per row or right-click → Delete.
+• Search and Type filter (Equity, Bonds, etc.). Summary: Total Invested, Free Cash, Total (EUR).
+
+Instrument Config tab
+• Set Currency, Type (Equity, Bonds, Commodity, etc.), Region (US, EU, EM, etc.) per instrument. Sortable; changes saved.
+
+Currency Exchange tab
+• Edit rate (units per 1 EUR). Update rates from internet (Frankfurter API, no key). Add/remove currencies; EUR fixed at 1.0.
+
+Statistics tab
+• Pie charts: By Type, By Region, Detailed (Type + Region). Charts update when portfolio or config changes.
+
+Persistence
+• Data is saved automatically. Stored in your user data directory (see Help → Data Storage).
+• Window size, tab order, and table column order are restored on restart.
+
+Prerequisites
+• Python 3.10+. Tesseract OCR optional for image import (see README or About for install link).
+"""
 
 
 class MainWindow(QMainWindow):
@@ -178,19 +222,86 @@ class MainWindow(QMainWindow):
         
         # Help menu
         help_menu = menubar.addMenu("&Help")
+        user_guide_action = QAction("User Guide", self)
+        user_guide_action.setStatusTip("Open the user guide")
+        user_guide_action.triggered.connect(self.on_user_guide)
+        help_menu.addAction(user_guide_action)
+        shortcuts_action = QAction("Keyboard Shortcuts", self)
+        shortcuts_action.setStatusTip("Show keyboard shortcuts")
+        shortcuts_action.triggered.connect(self.on_shortcuts)
+        help_menu.addAction(shortcuts_action)
+        data_storage_action = QAction("Data Storage...", self)
+        data_storage_action.setStatusTip("Show where data is stored")
+        data_storage_action.triggered.connect(self.on_data_storage)
+        help_menu.addAction(data_storage_action)
+        help_menu.addSeparator()
         about_action = QAction("About", self)
         about_action.setStatusTip("About Portfolio Tracker")
         about_action.triggered.connect(self.on_about)
         help_menu.addAction(about_action)
-    
+
+    def on_user_guide(self):
+        """Show the User Guide dialog."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("User Guide")
+        dialog.setMinimumSize(520, 480)
+        layout = QVBoxLayout(dialog)
+        browser = QTextBrowser(dialog)
+        browser.setOpenExternalLinks(True)
+        browser.setPlainText(_USER_GUIDE_TEXT)
+        layout.addWidget(browser)
+        close_btn = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        close_btn.rejected.connect(dialog.close)
+        layout.addWidget(close_btn)
+        dialog.exec()
+
+    def on_shortcuts(self):
+        """Show the Keyboard Shortcuts dialog."""
+        QMessageBox.information(
+            self,
+            "Keyboard Shortcuts",
+            "Ctrl+N – Import portfolio data\n"
+            "Ctrl+O – Load data (JSON)\n"
+            "Ctrl+S – Export to JSON\n"
+            "Ctrl+F – Focus search (Portfolio tab)\n"
+            "Ctrl+Q – Exit"
+        )
+
+    def on_data_storage(self):
+        """Show the Data Storage Location dialog."""
+        data_dir = get_data_dir()
+        path_str = str(data_dir.resolve())
+        files_note = "Files: portfolio.json, mappings.json, settings.json"
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Data Storage Location")
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("Your portfolio data is stored in:"))
+        path_label = QLabel(path_str)
+        path_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        path_label.setWordWrap(True)
+        layout.addWidget(path_label)
+        layout.addWidget(QLabel(files_note))
+        bbox = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        open_btn = bbox.addButton("Open Folder", QDialogButtonBox.ButtonRole.ActionRole)
+        open_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(path_str)))
+        open_btn.clicked.connect(dialog.close)
+        bbox.rejected.connect(dialog.close)
+        layout.addWidget(bbox)
+        dialog.exec()
+
     def on_about(self):
         """Show the About dialog."""
         QMessageBox.about(
             self,
             "About Portfolio Tracker",
             "<h3>Portfolio Tracker</h3>"
+            f"<p>Version {__version__}</p>"
+            "<p>Developed by Fh666z</p>"
             "<p>Track your portfolio holdings, instrument types, and performance.</p>"
             "<p>Import from images or spreadsheets, manage currencies, and export to JSON, CSV, or Excel.</p>"
+            "<p><b>License:</b> MIT License</p>"
+            "<p><b>Prerequisites:</b> Tesseract OCR is optional for image import. "
+            "<a href='https://github.com/UB-Mannheim/tesseract/wiki'>Install Tesseract (Windows)</a></p>"
         )
     
     def setup_shortcuts(self):

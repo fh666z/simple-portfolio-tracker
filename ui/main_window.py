@@ -61,110 +61,7 @@ class MainWindow(QMainWindow):
         
         layout = QVBoxLayout(central_widget)
         
-        # Top toolbar with New Input button
-        toolbar_layout = QHBoxLayout()
-        
-        new_input_btn = QPushButton("New Input")
-        new_input_btn.setStyleSheet("""
-            QPushButton {
-                padding: 10px 20px;
-                font-size: 14px;
-                background-color: #2196F3;
-                color: white;
-                border: none;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #1976D2;
-            }
-        """)
-        new_input_btn.setToolTip("Import portfolio data from image or spreadsheet (Ctrl+N)")
-        new_input_btn.clicked.connect(self.on_new_input)
-        toolbar_layout.addWidget(new_input_btn)
-        
-        toolbar_layout.addStretch()
-        
-        # Export button with dropdown menu
-        export_btn = QPushButton("Export")
-        export_btn.setStyleSheet("""
-            QPushButton {
-                padding: 10px 20px;
-                font-size: 14px;
-                background-color: #28a745;
-                color: white;
-                border: none;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #218838;
-            }
-            QPushButton::menu-indicator {
-                subcontrol-position: right center;
-                subcontrol-origin: padding;
-                left: -4px;
-            }
-        """)
-        export_btn.setToolTip("Export portfolio to file (Ctrl+S for JSON)")
-        
-        # Create export menu
-        export_menu = QMenu(self)
-        
-        export_json_action = QAction("Export to JSON (Ctrl+S)", self)
-        export_json_action.triggered.connect(self.on_save_data)
-        export_menu.addAction(export_json_action)
-        
-        export_csv_action = QAction("Export to CSV", self)
-        export_csv_action.triggered.connect(self.on_export_csv)
-        export_menu.addAction(export_csv_action)
-        
-        export_excel_action = QAction("Export to Excel", self)
-        export_excel_action.triggered.connect(self.on_export_excel)
-        export_menu.addAction(export_excel_action)
-        
-        export_btn.setMenu(export_menu)
-        toolbar_layout.addWidget(export_btn)
-        
-        # Load Data button
-        load_btn = QPushButton("Load Data")
-        load_btn.setStyleSheet("""
-            QPushButton {
-                padding: 10px 20px;
-                font-size: 14px;
-                background-color: #fd7e14;
-                color: white;
-                border: none;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #e96b02;
-            }
-        """)
-        load_btn.setToolTip("Load portfolio from a JSON file (Ctrl+O)")
-        load_btn.clicked.connect(self.on_load_data)
-        toolbar_layout.addWidget(load_btn)
-        
-        toolbar_layout.addSpacing(30)  # Visual separator
-        
-        # Reset Data button - placed far right with spacing to prevent accidental clicks
-        reset_btn = QPushButton("Reset Data")
-        reset_btn.setStyleSheet("""
-            QPushButton {
-                padding: 10px 20px;
-                font-size: 14px;
-                background-color: #6c757d;
-                color: white;
-                border: none;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #dc3545;
-            }
-        """)
-        reset_btn.setToolTip("Clear all portfolio data (requires confirmation)")
-        reset_btn.clicked.connect(self.on_reset_data)
-        toolbar_layout.addWidget(reset_btn)
-        
-        layout.addLayout(toolbar_layout)
+        self._setup_menus()
         
         # Tab widget
         self.tabs = QTabWidget()
@@ -220,6 +117,81 @@ class MainWindow(QMainWindow):
         
         # Set up keyboard shortcuts
         self.setup_shortcuts()
+    
+    def _setup_menus(self):
+        """Set up the application menu bar (File, Edit, Help)."""
+        menubar = self.menuBar()
+        
+        # File menu
+        file_menu = menubar.addMenu("&File")
+        
+        import_action = QAction("Import Portfolio Data...", self)
+        import_action.setShortcut(QKeySequence("Ctrl+N"))
+        import_action.setStatusTip("Import portfolio data from image or spreadsheet")
+        import_action.triggered.connect(self.on_new_input)
+        file_menu.addAction(import_action)
+        
+        load_action = QAction("Load Data...", self)
+        load_action.setShortcut(QKeySequence("Ctrl+O"))
+        load_action.setStatusTip("Load portfolio from a JSON file")
+        load_action.triggered.connect(self.on_load_data)
+        file_menu.addAction(load_action)
+        
+        file_menu.addSeparator()
+        
+        # Export submenu
+        export_submenu = QMenu("Export", self)
+        export_json_action = QAction("Export to JSON (Ctrl+S)", self)
+        export_json_action.setShortcut(QKeySequence("Ctrl+S"))
+        export_json_action.triggered.connect(self.on_save_data)
+        export_submenu.addAction(export_json_action)
+        export_csv_action = QAction("Export to CSV", self)
+        export_csv_action.triggered.connect(self.on_export_csv)
+        export_submenu.addAction(export_csv_action)
+        export_excel_action = QAction("Export to Excel", self)
+        export_excel_action.triggered.connect(self.on_export_excel)
+        export_submenu.addAction(export_excel_action)
+        file_menu.addMenu(export_submenu)
+        
+        file_menu.addSeparator()
+        
+        reset_action = QAction("Reset Data...", self)
+        reset_action.setStatusTip("Clear all portfolio data (requires confirmation)")
+        reset_action.triggered.connect(self.on_reset_data)
+        file_menu.addAction(reset_action)
+        
+        file_menu.addSeparator()
+        
+        exit_action = QAction("E&xit", self)
+        exit_action.setShortcut(QKeySequence("Ctrl+Q"))
+        exit_action.setStatusTip("Quit the application")
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+        
+        # Edit menu
+        edit_menu = menubar.addMenu("&Edit")
+        find_action = QAction("Find...", self)
+        find_action.setShortcut(QKeySequence("Ctrl+F"))
+        find_action.setStatusTip("Focus search in Portfolio tab")
+        find_action.triggered.connect(self.focus_search)
+        edit_menu.addAction(find_action)
+        
+        # Help menu
+        help_menu = menubar.addMenu("&Help")
+        about_action = QAction("About", self)
+        about_action.setStatusTip("About Portfolio Tracker")
+        about_action.triggered.connect(self.on_about)
+        help_menu.addAction(about_action)
+    
+    def on_about(self):
+        """Show the About dialog."""
+        QMessageBox.about(
+            self,
+            "About Portfolio Tracker",
+            "<h3>Portfolio Tracker</h3>"
+            "<p>Track your portfolio holdings, instrument types, and performance.</p>"
+            "<p>Import from images or spreadsheets, manage currencies, and export to JSON, CSV, or Excel.</p>"
+        )
     
     def setup_shortcuts(self):
         """Set up keyboard shortcuts for common operations."""

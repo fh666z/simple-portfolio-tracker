@@ -32,8 +32,8 @@ class CurrencyTab(QWidget):
         layout.addWidget(title_label)
         
         desc_label = QLabel(
-            "Enter how many EUR you get for 1 unit of each currency.\n"
-            "Examples: USD rate 0.92 means $1 = €0.92  |  GBP rate 1.17 means £1 = €1.17"
+            "Enter how many units of each currency you get for 1 EUR.\n"
+            "Examples: USD rate 1.09 means €1 = $1.09  |  CNH rate 7.69 means €1 = ¥7.69"
         )
         desc_label.setWordWrap(True)
         desc_label.setStyleSheet("color: #666; margin-bottom: 10px;")
@@ -46,13 +46,13 @@ class CurrencyTab(QWidget):
         self.rates_table = QTableWidget()
         self.rates_table.setAlternatingRowColors(True)
         self.rates_table.setColumnCount(2)
-        self.rates_table.setHorizontalHeaderLabels(["Currency", "Rate to EUR"])
+        self.rates_table.setHorizontalHeaderLabels(["Currency", "Rate (per 1 EUR)"])
         
         # Set header tooltips
         self.rates_table.horizontalHeaderItem(0).setToolTip("Currency code (e.g., USD, GBP)")
         self.rates_table.horizontalHeaderItem(1).setToolTip(
-            "How many EUR you get for 1 unit of this currency\n"
-            "Example: 0.92 for USD means $1 = €0.92"
+            "How many units of this currency equal 1 EUR\n"
+            "Example: 1.09 for USD means €1 = $1.09"
         )
         
         header = self.rates_table.horizontalHeader()
@@ -77,9 +77,9 @@ class CurrencyTab(QWidget):
         self.new_currency_input.setMaximumWidth(100)
         add_layout.addWidget(self.new_currency_input)
         
-        add_layout.addWidget(QLabel("Rate to EUR:"))
+        add_layout.addWidget(QLabel("Rate (per 1 EUR):"))
         self.new_rate_input = QLineEdit()
-        self.new_rate_input.setPlaceholderText("e.g., 0.0062")
+        self.new_rate_input.setPlaceholderText("e.g., 160.5")
         self.new_rate_input.setValidator(QDoubleValidator(0, 999999, 6))
         self.new_rate_input.setMaximumWidth(100)
         add_layout.addWidget(self.new_rate_input)

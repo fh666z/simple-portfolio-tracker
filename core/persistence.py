@@ -103,13 +103,14 @@ class SettingsStore:
     # Default currencies available in the app
     DEFAULT_CURRENCIES = ["EUR", "USD", "GBP", "CNH"]
     
-    # Default exchange rates (to EUR)
-    # Rate meaning: 1 [currency] = [rate] EUR
+    # Default exchange rates (from EUR)
+    # Rate meaning: 1 EUR = [rate] [currency]
+    # E.g., 1 EUR = 1.09 USD, 1 EUR = 7.69 CNH
     DEFAULT_EXCHANGE_RATES = {
         "EUR": 1.0,
-        "USD": 0.92,
-        "GBP": 1.17,
-        "CNH": 0.13,
+        "USD": 1.09,
+        "GBP": 0.85,
+        "CNH": 7.69,
     }
     
     def __init__(self):
@@ -183,16 +184,22 @@ class SettingsStore:
         self.save()
     
     def get_exchange_rate(self, currency: str) -> float:
-        """Get exchange rate for a currency. Returns 1.0 for EUR or unknown currencies."""
+        """Get exchange rate for a currency (units per 1 EUR). Returns 1.0 for EUR or unknown currencies."""
         if currency == 'EUR':
             return 1.0
         rates = self.get_exchange_rates()
         return rates.get(currency, 1.0)
     
     def convert_to_eur(self, amount: float, currency: str) -> float:
-        """Convert an amount from given currency to EUR."""
+        """Convert an amount from given currency to EUR.
+        
+        Rate represents how many units of currency equal 1 EUR.
+        So: EUR = amount / rate
+        """
         rate = self.get_exchange_rate(currency)
-        return amount * rate
+        if rate == 0:
+            return amount  # Avoid division by zero
+        return amount / rate
     
     # Column order methods
     def get_column_order(self, table_name: str) -> Optional[list[int]]:

@@ -387,14 +387,12 @@ class PortfolioTab(QWidget):
             # Calculate diff values
             diff_pct = alloc.diff_with_target if alloc else 0
             
-            # Diff in cash: (target_allocation - current_allocation) * total_portfolio_EUR * (1/exchange_rate)
+            # Diff in cash: (target_allocation - current_allocation) * total_portfolio_EUR * exchange_rate
             # This gives the amount in the instrument's currency
+            # Exchange rate = how many units of currency per 1 EUR
             exchange_rate = self.settings_store.get_exchange_rate(holding.currency)
-            if exchange_rate > 0:
-                diff_in_cash_eur = diff_pct * total_eur
-                diff_in_cash = diff_in_cash_eur / exchange_rate  # Convert to instrument currency
-            else:
-                diff_in_cash = 0
+            diff_in_cash_eur = diff_pct * total_eur
+            diff_in_cash = diff_in_cash_eur * exchange_rate  # Convert EUR to instrument currency
             
             # Diff in shares: diff_in_cash / last_price
             if holding.last_price > 0:

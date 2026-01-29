@@ -111,6 +111,9 @@ class ReviewDialog(QDialog):
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for i in range(1, len(self.COLUMNS)):
             header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
+        
+        # Enable column reordering (no persistence for review dialog)
+        header.setSectionsMovable(True)
     
     def populate_table(self):
         """Populate the table with holdings data."""

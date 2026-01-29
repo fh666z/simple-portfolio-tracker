@@ -137,25 +137,39 @@ class MainWindow(QMainWindow):
         
         # Tab widget
         self.tabs = QTabWidget()
+        self.tabs.setMovable(True)  # Enable tab reordering via drag-and-drop
+        
+        # Tab names for persistence (used as identifiers)
+        self.tab_names = []
         
         # Portfolio tab
         self.portfolio_tab = PortfolioTab(self.calculator, self.settings_store)
         self.portfolio_tab.portfolio_changed.connect(self.on_portfolio_changed)
         self.tabs.addTab(self.portfolio_tab, "Portfolio")
+        self.tab_names.append("portfolio")
         
         # Instrument Config tab
         self.config_tab = InstrumentConfigTab(self.calculator, self.settings_store)
         self.config_tab.config_changed.connect(self.on_config_changed)
         self.tabs.addTab(self.config_tab, "Instrument Config")
+        self.tab_names.append("instrument_config")
         
         # Stats tab
-        self.stats_tab = StatsTab(self.calculator)
+        self.stats_tab = StatsTab(self.calculator, self.settings_store)
         self.tabs.addTab(self.stats_tab, "Statistics")
+        self.tab_names.append("statistics")
         
         # Currency Exchange tab
         self.currency_tab = CurrencyTab(self.settings_store)
         self.currency_tab.rates_changed.connect(self.on_rates_changed)
         self.tabs.addTab(self.currency_tab, "Currency Exchange")
+        self.tab_names.append("currency_exchange")
+        
+        # Connect tab moved signal for persistence
+        self.tabs.tabBar().tabMoved.connect(self.on_tab_moved)
+        
+        # Restore saved tab order
+        self.restore_tab_order()
         
         layout.addWidget(self.tabs)
         
@@ -227,6 +241,45 @@ class MainWindow(QMainWindow):
         """Handle exchange rate change."""
         # Refresh all views to recalculate with new rates
         self.refresh_all()
+    
+    def on_tab_moved(self, from_index: int, to_index: int):
+        """Handle tab reorder - save new order."""
+        # Get current tab order by tab names
+        order = []
+        for i in range(self.tabs.count()):
+            widget = self.tabs.widget(i)
+            # Find the tab name based on widget
+            if widget == self.portfolio_tab:
+                order.append("portfolio")
+            elif widget == self.config_tab:
+                order.append("instrument_config")
+            elif widget == self.stats_tab:
+                order.append("statistics")
+            elif widget == self.currency_tab:
+                order.append("currency_exchange")
+        self.settings_store.set_tab_order(order)
+    
+    def restore_tab_order(self):
+        """Restore saved tab order."""
+        order = self.settings_store.get_tab_order()
+        if not order:
+            return
+        
+        # Map tab names to widgets
+        name_to_widget = {
+            "portfolio": self.portfolio_tab,
+            "instrument_config": self.config_tab,
+            "statistics": self.stats_tab,
+            "currency_exchange": self.currency_tab,
+        }
+        
+        # Reorder tabs based on saved order
+        for target_index, name in enumerate(order):
+            widget = name_to_widget.get(name)
+            if widget:
+                current_index = self.tabs.indexOf(widget)
+                if current_index != -1 and current_index != target_index:
+                    self.tabs.tabBar().moveTab(current_index, target_index)
     
     def on_new_input(self):
         """Handle new input button click."""

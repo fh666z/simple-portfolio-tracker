@@ -6,14 +6,16 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 
 from core.calculator import PortfolioCalculator
+from core.persistence import SettingsStore
 
 
 class StatsTab(QWidget):
     """Statistics tab showing allocation breakdown by Type and Region."""
     
-    def __init__(self, calculator: PortfolioCalculator, parent=None):
+    def __init__(self, calculator: PortfolioCalculator, settings_store: SettingsStore, parent=None):
         super().__init__(parent)
         self.calculator = calculator
+        self.settings_store = settings_store
         self.setup_ui()
     
     def setup_ui(self):
@@ -30,14 +32,14 @@ class StatsTab(QWidget):
         # By Type table
         type_group = QGroupBox("STATS by Type")
         type_layout = QVBoxLayout(type_group)
-        self.type_table = self.create_stats_table()
+        self.type_table = self.create_stats_table('stats_type')
         type_layout.addWidget(self.type_table)
         basic_layout.addWidget(type_group)
         
         # By Region table
         region_group = QGroupBox("STATS by Region")
         region_layout = QVBoxLayout(region_group)
-        self.region_table = self.create_stats_table()
+        self.region_table = self.create_stats_table('stats_region')
         region_layout.addWidget(self.region_table)
         basic_layout.addWidget(region_group)
         
@@ -56,7 +58,7 @@ class StatsTab(QWidget):
         
         layout.addWidget(splitter)
     
-    def create_stats_table(self) -> QTableWidget:
+    def create_stats_table(self, table_name: str) -> QTableWidget:
         """Create a basic stats table."""
         table = QTableWidget()
         columns = ["Category", "Current %", "Current All %", "Target %"]
@@ -67,6 +69,13 @@ class StatsTab(QWidget):
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         for i in range(1, len(columns)):
             header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
+        
+        # Enable column reordering
+        header.setSectionsMovable(True)
+        header.sectionMoved.connect(lambda l, o, n, tn=table_name, t=table: self.on_column_moved(tn, t))
+        
+        # Restore saved column order
+        self.restore_column_order(table_name, table)
         
         return table
     
@@ -83,9 +92,33 @@ class StatsTab(QWidget):
         for i in range(2, len(columns)):
             header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
         
+        # Enable column reordering
+        header.setSectionsMovable(True)
+        header.sectionMoved.connect(lambda l, o, n: self.on_column_moved('stats_detailed', table))
+        
         table.setSortingEnabled(True)
         
+        # Restore saved column order
+        self.restore_column_order('stats_detailed', table)
+        
         return table
+    
+    def on_column_moved(self, table_name: str, table: QTableWidget):
+        """Handle column reorder - save new order."""
+        header = table.horizontalHeader()
+        order = [header.logicalIndex(i) for i in range(header.count())]
+        self.settings_store.set_column_order(table_name, order)
+    
+    def restore_column_order(self, table_name: str, table: QTableWidget):
+        """Restore saved column order for a table."""
+        order = self.settings_store.get_column_order(table_name)
+        if order:
+            header = table.horizontalHeader()
+            for visual_index, logical_index in enumerate(order):
+                if logical_index < header.count():
+                    current_visual = header.visualIndex(logical_index)
+                    if current_visual != visual_index:
+                        header.moveSection(current_visual, visual_index)
     
     def refresh(self):
         """Refresh all stats tables."""

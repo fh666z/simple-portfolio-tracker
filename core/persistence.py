@@ -193,6 +193,29 @@ class SettingsStore:
         """Convert an amount from given currency to EUR."""
         rate = self.get_exchange_rate(currency)
         return amount * rate
+    
+    # Column order methods
+    def get_column_order(self, table_name: str) -> Optional[list[int]]:
+        """Get saved column order for a table. Returns None if not saved."""
+        column_orders = self.settings.get('column_orders', {})
+        return column_orders.get(table_name)
+    
+    def set_column_order(self, table_name: str, order: list[int]):
+        """Save column order for a table."""
+        if 'column_orders' not in self.settings:
+            self.settings['column_orders'] = {}
+        self.settings['column_orders'][table_name] = order
+        self.save()
+    
+    # Tab order methods
+    def get_tab_order(self) -> Optional[list[str]]:
+        """Get saved tab order. Returns None if not saved."""
+        return self.settings.get('tab_order')
+    
+    def set_tab_order(self, order: list[str]):
+        """Save tab order."""
+        self.settings['tab_order'] = order
+        self.save()
 
 
 class PortfolioStore:

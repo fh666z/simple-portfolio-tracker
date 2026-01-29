@@ -105,6 +105,10 @@ class PortfolioTab(QWidget):
         for i in range(1, len(columns)):
             header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
         
+        # Enable column reordering via drag-and-drop
+        header.setSectionsMovable(True)
+        header.sectionMoved.connect(self.on_column_moved)
+        
         # Enable sorting
         self.table.setSortingEnabled(True)
         
@@ -113,6 +117,25 @@ class PortfolioTab(QWidget):
         
         # Connect cell change signal
         self.table.cellChanged.connect(self.on_cell_changed)
+        
+        # Restore saved column order
+        self.restore_column_order()
+    
+    def on_column_moved(self, logical_index: int, old_visual: int, new_visual: int):
+        """Handle column reorder - save new order."""
+        header = self.table.horizontalHeader()
+        order = [header.logicalIndex(i) for i in range(header.count())]
+        self.settings_store.set_column_order('portfolio', order)
+    
+    def restore_column_order(self):
+        """Restore saved column order."""
+        order = self.settings_store.get_column_order('portfolio')
+        if order:
+            header = self.table.horizontalHeader()
+            for visual_index, logical_index in enumerate(order):
+                current_visual = header.visualIndex(logical_index)
+                if current_visual != visual_index:
+                    header.moveSection(current_visual, visual_index)
     
     def get_row_background(self, row: int, col: int) -> QColor:
         """Get background color for a cell based on row and column."""
